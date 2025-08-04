@@ -1,0 +1,407 @@
+const BookingService = require('../services/bookingService');
+const BookingApprovalService = require('../services/bookingApprovalService');
+
+// Create a new booking
+exports.createBooking = async (req, res) => {
+  try {
+    const {
+      hospitalId,
+      resourceType,
+      patientName,
+      patientAge,
+      patientGender,
+      emergencyContactName,
+      emergencyContactPhone,
+      emergencyContactRelationship,
+      medicalCondition,
+      urgency,
+      surgeonId,
+      scheduledDate,
+      estimatedDuration,
+      notes
+    } = req.body;
+
+    const bookingData = {
+      userId: req.user.id, // Use authenticated user's ID
+      hospitalId,
+      resourceType,
+      patientName,
+      patientAge,
+      patientGender,
+      emergencyContactName,
+      emergencyContactPhone,
+      emergencyContactRelationship,
+      medicalCondition,
+      urgency,
+      surgeonId,
+      scheduledDate,
+      estimatedDuration,
+      notes
+    };
+
+    const booking = BookingService.create(bookingData);
+
+    res.status(201).json({
+      success: true,
+      data: booking,
+      message: 'Booking created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating booking:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get user bookings
+exports.getUserBookings = async (req, res) => {
+  try {
+    const bookings = BookingService.getByUserId(req.user.id);
+
+    res.json({
+      success: true,
+      data: bookings,
+      count: bookings.length
+    });
+  } catch (error) {
+    console.error('Error fetching user bookings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch bookings'
+    });
+  }
+};
+
+// Get specific booking
+exports.getBookingById = async (req, res) => {
+  try {
+    const booking = BookingService.getById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        error: 'Booking not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: booking
+    });
+  } catch (error) {
+    console.error('Error fetching booking:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch booking'
+    });
+  }
+};
+
+// Update booking status
+exports.updateBookingStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes } = req.body;
+
+    BookingService.updateStatus(id, status);
+    const booking = BookingService.getById(id);
+
+    res.json({
+      success: true,
+      data: booking,
+      message: 'Booking status updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating booking status:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get all bookings (for hospital authority use)
+exports.getAllBookings = async (req, res) => {
+  try {
+    let bookings;
+    
+    // If hospital authority, only show bookings for their hospital
+    if (req.user.userType === 'hospital-authority' && req.user.hospitalId) {
+      bookings = BookingService.getByHospitalId(req.user.hospitalId);
+    } else {
+      bookings = BookingService.getAll();
+    }
+
+    res.json({
+      success: true,
+      data: bookings,
+      count: bookings.length
+    });
+  } catch (error) {
+    console.error('Error fetching all bookings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch bookings'
+    });
+  }
+};
+
+// Cancel booking
+exports.cancelBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const booking = BookingService.cancel(id);
+
+    res.json({
+      success: true,
+      data: booking,
+      message: 'Booking cancelled successfully'
+    });
+  } catch (error) {
+    console.error('Error cancelling booking:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get current user's bookings (for profile page)
+exports.getCurrentUserBookings = async (req, res) => {
+  try {
+    const bookings = BookingService.getByUserId(req.user.id);
+
+    res.json({
+      success: true,
+      data: bookings,
+      count: bookings.length
+    });
+  } catch (error) {
+    console.error('Error fetching current user bookings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch bookings'
+    });
+  }
+};
+
+// Booking approval endpoints
+
+// Get pending bookings for a hospital
+exports.getPendingBookings = async (req, res) => {
+  try {
+    const { hospitalId } = req.params;
+    const { urgency, resourceType, limit, sortBy, sortOrder } = req.query;
+
+    // Check if user has permission to view this hospital's bookings
+    if (req.user.userType === 'hospital-authority' && req.user.hospital_id !== parseInt(hospitalId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only view bookings for your assigned hospital'
+      });
+    }
+
+    const options = {
+      urgency,
+      resourceType,
+      limit: limit ? parseInt(limit) : undefined,
+      sortBy,
+      sortOrder
+    };
+
+    const result = await BookingApprovalService.getPendingBookings(parseInt(hospitalId), options);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.data.bookings,
+      totalCount: result.data.totalCount,
+      summary: result.data.summary,
+      filters: result.data.filters
+    });
+
+  } catch (error) {
+    console.error('Error fetching pending bookings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch pending bookings'
+    });
+  }
+};
+
+// Approve a booking
+exports.approveBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { notes, resourcesAllocated, scheduledDate, autoAllocateResources } = req.body || {};
+
+    // Get booking to check hospital ownership
+    const BookingService = require('../services/bookingService');
+    const booking = BookingService.getById(id);
+    
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        error: 'Booking not found'
+      });
+    }
+
+    // Check if user has permission to approve this booking
+    if (req.user.userType === 'hospital-authority' && req.user.hospital_id !== booking.hospitalId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only approve bookings for your assigned hospital'
+      });
+    }
+
+    const approvalData = {
+      notes,
+      resourcesAllocated: resourcesAllocated ? parseInt(resourcesAllocated) : undefined,
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+      autoAllocateResources: autoAllocateResources !== false
+    };
+
+    const result = await BookingApprovalService.approveBooking(parseInt(id), req.user.id, approvalData);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.data,
+      message: result.message
+    });
+
+  } catch (error) {
+    console.error('Error approving booking:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to approve booking'
+    });
+  }
+};
+
+// Decline a booking
+exports.declineBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, notes, alternativeSuggestions } = req.body || {};
+
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        error: 'Decline reason is required'
+      });
+    }
+
+    // Get booking to check hospital ownership
+    const BookingService = require('../services/bookingService');
+    const booking = BookingService.getById(id);
+    
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        error: 'Booking not found'
+      });
+    }
+
+    // Check if user has permission to decline this booking
+    if (req.user.userType === 'hospital-authority' && req.user.hospital_id !== booking.hospitalId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only decline bookings for your assigned hospital'
+      });
+    }
+
+    const declineData = {
+      reason,
+      notes,
+      alternativeSuggestions: alternativeSuggestions || []
+    };
+
+    const result = await BookingApprovalService.declineBooking(parseInt(id), req.user.id, declineData);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.data,
+      message: result.message
+    });
+
+  } catch (error) {
+    console.error('Error declining booking:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to decline booking'
+    });
+  }
+};
+
+// Get booking history for a hospital
+exports.getBookingHistory = async (req, res) => {
+  try {
+    const { hospitalId } = req.params;
+    const { status, startDate, endDate, limit, offset } = req.query;
+
+    // Check if user has permission to view this hospital's history
+    if (req.user.userType === 'hospital-authority' && req.user.hospital_id !== parseInt(hospitalId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only view booking history for your assigned hospital'
+      });
+    }
+
+    const options = {
+      status,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined
+    };
+
+    const result = await BookingApprovalService.getBookingHistory(parseInt(hospitalId), options);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.message
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.data.bookings,
+      totalCount: result.data.totalCount,
+      currentPage: result.data.currentPage,
+      totalPages: result.data.totalPages,
+      filters: result.data.filters
+    });
+
+  } catch (error) {
+    console.error('Error fetching booking history:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch booking history'
+    });
+  }
+}; 

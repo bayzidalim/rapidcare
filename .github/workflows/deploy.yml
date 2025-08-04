@@ -1,0 +1,80 @@
+name: Deploy RapidCare
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install root dependencies
+      run: npm ci
+    
+    - name: Install backend dependencies
+      run: cd back-end && npm ci
+    
+    - name: Install frontend dependencies
+      run: cd front-end && npm ci
+    
+    - name: Run backend tests
+      run: cd back-end && npm test
+    
+    - name: Run frontend tests
+      run: cd front-end && npm test
+    
+    - name: Lint backend
+      run: cd back-end && npm run lint
+    
+    - name: Lint frontend
+      run: cd front-end && npm run lint
+    
+    - name: Build frontend
+      run: cd front-end && npm run build
+
+  deploy-backend:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to Railway
+      uses: railway-app/railway-action@v1
+      with:
+        api-token: ${{ secrets.RAILWAY_TOKEN }}
+        project-id: ${{ secrets.RAILWAY_PROJECT_ID }}
+        service: backend
+        path: back-end
+
+  deploy-frontend:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to Vercel
+      uses: vercel/action@v1
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: front-end
