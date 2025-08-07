@@ -3,108 +3,252 @@ const UserBalance = require('../models/UserBalance');
 const BalanceTransaction = require('../models/BalanceTransaction');
 const PaymentConfig = require('../models/PaymentConfig');
 const NotificationService = require('./notificationService');
+const ErrorHandler = require('../utils/errorHandler');
+const { formatTaka, parseTaka, roundTaka, areAmountsEqual } = require('../utils/currencyUtils');
 const db = require('../config/database');
 
 class RevenueManagementService {
   /**
-   * Distribute revenue from a completed transaction
+   * Distribute revenue from a completed transaction with comprehensive error handling and rollback
    */
   static async distributeRevenue(transactionId, bookingAmount, hospitalId) {
+    let rollbackRequired = false;
+    const distributionContext = {
+      transactionId,
+      hospitalId,
+      amount: bookingAmount,
+      startTime: new Date().toISOString()
+    };
+
     try {
       // Begin database transaction for atomicity
       db.exec('BEGIN TRANSACTION');
+      rollbackRequired = true;
 
+      // Validate transaction exists and is eligible for revenue distribution
       const transaction = Transaction.findById(transactionId);
       if (!transaction) {
-        throw new Error('Transaction not found');
+        const error = new Error('Transaction not found');
+        return ErrorHandler.handleRevenueDistributionError(error, distributionContext);
       }
 
       if (transaction.status !== 'completed') {
-        throw new Error('Can only distribute revenue for completed transactions');
+        const error = new Error('Can only distribute revenue for completed transactions');
+        return ErrorHandler.handleRevenueDistributionError(error, {
+          ...distributionContext,
+          currentStatus: transaction.status
+        });
       }
 
-      // Get service charge rate
-      const serviceCharge = this.calculateServiceCharge(bookingAmount, hospitalId);
-      const hospitalAmount = bookingAmount - serviceCharge;
+      // Validate Taka amounts
+      const amountValidation = ErrorHandler.validateTakaAmount(bookingAmount, {
+        minAmount: 1,
+        maxAmount: 1000000
+      });
 
-      // Update hospital balance
-      const hospitalBalance = await this.updateHospitalBalance(hospitalId, hospitalAmount, transactionId);
+      if (!amountValidation.isValid) {
+        db.exec('ROLLBACK');
+        return {
+          success: false,
+          errors: amountValidation.errors,
+          message: 'Invalid booking amount for revenue distribution'
+        };
+      }
 
-      // Update admin balance
-      await this.updateAdminBalance(serviceCharge, transactionId);
+      const sanitizedAmount = amountValidation.sanitizedAmount;
+
+      // Calculate service charge with error handling
+      let serviceCharge, hospitalAmount;
+      try {
+        serviceCharge = this.calculateServiceChargeWithValidation(sanitizedAmount, hospitalId);
+        hospitalAmount = roundTaka(sanitizedAmount - serviceCharge);
+        
+        // Validate calculation integrity
+        if (!areAmountsEqual(sanitizedAmount, serviceCharge + hospitalAmount, 0.01)) {
+          throw new Error('Revenue calculation integrity check failed');
+        }
+      } catch (calculationError) {
+        const error = new Error(`Service charge calculation error: ${calculationError.message}`);
+        return ErrorHandler.handleRevenueDistributionError(error, {
+          ...distributionContext,
+          amount: sanitizedAmount
+        });
+      }
+
+      // Update hospital balance with error recovery
+      let hospitalBalance;
+      try {
+        hospitalBalance = await this.updateHospitalBalanceWithValidation(hospitalId, hospitalAmount, transactionId);
+      } catch (hospitalError) {
+        const error = new Error(`Hospital balance update failed: ${hospitalError.message}`);
+        return ErrorHandler.handleRevenueDistributionError(error, {
+          ...distributionContext,
+          hospitalAmount: formatTaka(hospitalAmount)
+        });
+      }
+
+      // Update admin balance with error recovery
+      try {
+        await this.updateAdminBalanceWithValidation(serviceCharge, transactionId);
+      } catch (adminError) {
+        const error = new Error(`Admin balance update failed: ${adminError.message}`);
+        return ErrorHandler.handleRevenueDistributionError(error, {
+          ...distributionContext,
+          serviceCharge: formatTaka(serviceCharge)
+        });
+      }
+
+      // Verify balance integrity after updates
+      const integrityCheck = await this.verifyRevenueDistributionIntegrity(transactionId, sanitizedAmount, serviceCharge, hospitalAmount);
+      if (!integrityCheck.isValid) {
+        const error = new Error(`Revenue distribution integrity check failed: ${integrityCheck.errors.join(', ')}`);
+        return ErrorHandler.handleFinancialConsistencyError(error, {
+          expected: formatTaka(sanitizedAmount),
+          actual: formatTaka(integrityCheck.actualTotal),
+          difference: formatTaka(Math.abs(sanitizedAmount - integrityCheck.actualTotal)),
+          affectedTransactions: [transactionId]
+        });
+      }
 
       // Commit transaction
       db.exec('COMMIT');
+      rollbackRequired = false;
 
-      // Send revenue notification to hospital authority
-      try {
-        const hospitalAuthority = db.prepare(`
-          SELECT id FROM users 
-          WHERE userType = 'hospital-authority' AND hospital_id = ? 
-          LIMIT 1
-        `).get(hospitalId);
-
-        if (hospitalAuthority) {
-          const hospitalInfo = db.prepare('SELECT name FROM hospitals WHERE id = ?').get(hospitalId);
-          const booking = db.prepare('SELECT patientName, resourceType FROM bookings WHERE id = ?').get(transaction.bookingId);
-          
-          await NotificationService.sendRevenueNotification(
-            hospitalId,
-            hospitalAuthority.id,
-            {
-              hospitalName: hospitalInfo?.name || 'Hospital',
-              amount: hospitalAmount,
-              transactionId: transaction.transactionId,
-              bookingId: transaction.bookingId,
-              resourceType: booking?.resourceType || 'Resource',
-              patientName: booking?.patientName || 'Patient',
-              serviceCharge,
-              totalAmount: bookingAmount,
-              currentBalance: hospitalBalance?.currentBalance || 0
-            }
-          );
-        }
-      } catch (notificationError) {
-        console.error('Failed to send revenue notification:', notificationError);
-        // Don't fail the revenue distribution if notification fails
-      }
+      // Send revenue notification to hospital authority (non-blocking)
+      this.sendRevenueNotificationWithErrorHandling(
+        transactionId, 
+        hospitalId, 
+        hospitalAmount, 
+        serviceCharge, 
+        sanitizedAmount, 
+        hospitalBalance
+      ).catch(error => ErrorHandler.logError(error, { 
+        context: 'revenue_notification', 
+        transactionId, 
+        hospitalId 
+      }));
 
       return {
         success: true,
-        totalAmount: bookingAmount,
-        hospitalAmount,
-        serviceCharge,
-        distributedAt: new Date().toISOString()
+        totalAmount: formatTaka(sanitizedAmount),
+        hospitalAmount: formatTaka(hospitalAmount),
+        serviceCharge: formatTaka(serviceCharge),
+        distributedAt: new Date().toISOString(),
+        integrityVerified: true,
+        message: 'Revenue distributed successfully',
+        messageEn: 'Revenue distributed successfully',
+        messageBn: 'রাজস্ব সফলভাবে বিতরণ করা হয়েছে'
       };
 
     } catch (error) {
-      // Rollback on error
-      db.exec('ROLLBACK');
-      console.error('Revenue distribution error:', error);
+      // Rollback on error if transaction was started
+      if (rollbackRequired) {
+        try {
+          db.exec('ROLLBACK');
+        } catch (rollbackError) {
+          ErrorHandler.logError(rollbackError, { 
+            context: 'revenue_distribution_rollback', 
+            originalError: error.message,
+            transactionId 
+          });
+        }
+      }
+
+      // Log the error with full context
+      ErrorHandler.logError(error, distributionContext);
+
+      // Return structured error response
+      return ErrorHandler.handleRevenueDistributionError(error, distributionContext);
+    }
+  }
+
+  /**
+   * Calculate service charge with comprehensive validation
+   */
+  static calculateServiceChargeWithValidation(amount, hospitalId, serviceChargeRate = null) {
+    try {
+      // Validate amount
+      const amountValidation = ErrorHandler.validateTakaAmount(amount, {
+        minAmount: 0,
+        maxAmount: 1000000
+      });
+
+      if (!amountValidation.isValid) {
+        throw new Error('Invalid amount for service charge calculation');
+      }
+
+      const sanitizedAmount = amountValidation.sanitizedAmount;
+      let rate = serviceChargeRate;
+
+      // Get hospital-specific or default service charge rate
+      if (rate === null) {
+        try {
+          const config = PaymentConfig.getConfigForHospital(hospitalId);
+          rate = config ? config.serviceChargeRate : 0.05; // Default 5%
+        } catch (configError) {
+          ErrorHandler.logError(configError, { 
+            context: 'service_charge_config', 
+            hospitalId 
+          });
+          rate = 0.05; // Fallback to default 5%
+        }
+      }
+
+      // Validate rate
+      if (rate < 0 || rate > 0.5) { // Max 50% service charge
+        throw new Error(`Invalid service charge rate: ${rate}. Must be between 0 and 0.5`);
+      }
+
+      const serviceCharge = roundTaka(sanitizedAmount * rate);
+
+      // Validate result
+      if (serviceCharge < 0 || serviceCharge > sanitizedAmount) {
+        throw new Error(`Invalid service charge calculation: ${serviceCharge} for amount ${sanitizedAmount}`);
+      }
+
+      return serviceCharge;
+
+    } catch (error) {
+      ErrorHandler.logError(error, { 
+        context: 'service_charge_calculation',
+        amount: formatTaka(amount),
+        hospitalId,
+        serviceChargeRate 
+      });
       throw error;
     }
   }
 
   /**
-   * Calculate service charge based on hospital configuration
+   * Calculate service charge (legacy method for backward compatibility)
    */
   static calculateServiceCharge(amount, hospitalId, serviceChargeRate = null) {
-    if (serviceChargeRate !== null) {
-      return amount * serviceChargeRate;
+    try {
+      return this.calculateServiceChargeWithValidation(amount, hospitalId, serviceChargeRate);
+    } catch (error) {
+      // Fallback to basic calculation
+      const rate = serviceChargeRate || 0.05;
+      return roundTaka(amount * rate);
     }
-
-    // Get hospital-specific or default service charge rate
-    const config = PaymentConfig.getConfigForHospital(hospitalId);
-    const rate = config ? config.serviceChargeRate : 0.05; // Default 5%
-    
-    return amount * rate;
   }
 
   /**
-   * Update hospital authority balance
+   * Update hospital authority balance with comprehensive validation and error recovery
    */
-  static async updateHospitalBalance(hospitalId, amount, transactionId) {
+  static async updateHospitalBalanceWithValidation(hospitalId, amount, transactionId) {
     try {
+      // Validate amount
+      const amountValidation = ErrorHandler.validateTakaAmount(amount, {
+        minAmount: -1000000, // Allow negative for refunds
+        maxAmount: 1000000
+      });
+
+      if (!amountValidation.isValid) {
+        throw new Error(`Invalid amount for hospital balance update: ${amount}`);
+      }
+
+      const sanitizedAmount = amountValidation.sanitizedAmount;
+
       // Find hospital authority user for this hospital
       const hospitalAuthority = db.prepare(`
         SELECT id FROM users 
@@ -116,29 +260,79 @@ class RevenueManagementService {
         throw new Error(`No hospital authority found for hospital ${hospitalId}`);
       }
 
-      // Update balance
-      const updatedBalance = UserBalance.updateBalance(
-        hospitalAuthority.id,
-        hospitalId,
-        amount,
-        'payment_received',
-        transactionId,
-        `Payment received from booking transaction ${transactionId}`
-      );
+      // Get current balance for integrity check
+      const currentBalance = UserBalance.findByUserId(hospitalAuthority.id, hospitalId);
+      const previousBalance = currentBalance ? currentBalance.currentBalance : 0;
+
+      // Update balance with error handling
+      let updatedBalance;
+      try {
+        updatedBalance = UserBalance.updateBalance(
+          hospitalAuthority.id,
+          hospitalId,
+          sanitizedAmount,
+          sanitizedAmount >= 0 ? 'payment_received' : 'refund_processed',
+          transactionId,
+          `${sanitizedAmount >= 0 ? 'Payment received' : 'Refund processed'} from booking transaction ${transactionId} - Amount: ${formatTaka(sanitizedAmount)}`
+        );
+      } catch (balanceError) {
+        throw new Error(`Balance update operation failed: ${balanceError.message}`);
+      }
+
+      // Verify balance update integrity
+      const expectedBalance = roundTaka(previousBalance + sanitizedAmount);
+      if (!areAmountsEqual(updatedBalance.currentBalance, expectedBalance, 0.01)) {
+        throw new Error(`Balance update integrity check failed. Expected: ${formatTaka(expectedBalance)}, Actual: ${formatTaka(updatedBalance.currentBalance)}`);
+      }
 
       return updatedBalance;
 
     } catch (error) {
-      console.error('Hospital balance update error:', error);
+      ErrorHandler.logError(error, { 
+        context: 'hospital_balance_update',
+        hospitalId,
+        amount: formatTaka(amount),
+        transactionId 
+      });
       throw error;
     }
   }
 
   /**
-   * Update admin balance with service charge
+   * Update hospital balance (legacy method for backward compatibility)
    */
-  static async updateAdminBalance(amount, transactionId) {
+  static async updateHospitalBalance(hospitalId, amount, transactionId) {
     try {
+      return await this.updateHospitalBalanceWithValidation(hospitalId, amount, transactionId);
+    } catch (error) {
+      // Log error but don't throw to maintain backward compatibility
+      ErrorHandler.logError(error, { 
+        context: 'hospital_balance_update_legacy',
+        hospitalId,
+        amount: formatTaka(amount),
+        transactionId 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Update admin balance with comprehensive validation and error recovery
+   */
+  static async updateAdminBalanceWithValidation(amount, transactionId) {
+    try {
+      // Validate amount
+      const amountValidation = ErrorHandler.validateTakaAmount(amount, {
+        minAmount: -1000000, // Allow negative for refunds
+        maxAmount: 1000000
+      });
+
+      if (!amountValidation.isValid) {
+        throw new Error(`Invalid amount for admin balance update: ${amount}`);
+      }
+
+      const sanitizedAmount = amountValidation.sanitizedAmount;
+
       // Find admin user
       const admin = db.prepare(`
         SELECT id FROM users 
@@ -150,20 +344,56 @@ class RevenueManagementService {
         throw new Error('No admin user found');
       }
 
-      // Update admin balance
-      const updatedBalance = UserBalance.updateBalance(
-        admin.id,
-        null, // Admin balance is not hospital-specific
-        amount,
-        'service_charge',
-        transactionId,
-        `Service charge from booking transaction ${transactionId}`
-      );
+      // Get current balance for integrity check
+      const currentBalance = UserBalance.findByUserId(admin.id, null);
+      const previousBalance = currentBalance ? currentBalance.currentBalance : 0;
+
+      // Update admin balance with error handling
+      let updatedBalance;
+      try {
+        updatedBalance = UserBalance.updateBalance(
+          admin.id,
+          null, // Admin balance is not hospital-specific
+          sanitizedAmount,
+          sanitizedAmount >= 0 ? 'service_charge' : 'service_charge_refund',
+          transactionId,
+          `${sanitizedAmount >= 0 ? 'Service charge' : 'Service charge refund'} from booking transaction ${transactionId} - Amount: ${formatTaka(sanitizedAmount)}`
+        );
+      } catch (balanceError) {
+        throw new Error(`Admin balance update operation failed: ${balanceError.message}`);
+      }
+
+      // Verify balance update integrity
+      const expectedBalance = roundTaka(previousBalance + sanitizedAmount);
+      if (!areAmountsEqual(updatedBalance.currentBalance, expectedBalance, 0.01)) {
+        throw new Error(`Admin balance update integrity check failed. Expected: ${formatTaka(expectedBalance)}, Actual: ${formatTaka(updatedBalance.currentBalance)}`);
+      }
 
       return updatedBalance;
 
     } catch (error) {
-      console.error('Admin balance update error:', error);
+      ErrorHandler.logError(error, { 
+        context: 'admin_balance_update',
+        amount: formatTaka(amount),
+        transactionId 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Update admin balance (legacy method for backward compatibility)
+   */
+  static async updateAdminBalance(amount, transactionId) {
+    try {
+      return await this.updateAdminBalanceWithValidation(amount, transactionId);
+    } catch (error) {
+      // Log error but don't throw to maintain backward compatibility
+      ErrorHandler.logError(error, { 
+        context: 'admin_balance_update_legacy',
+        amount: formatTaka(amount),
+        transactionId 
+      });
       throw error;
     }
   }
@@ -623,6 +853,105 @@ class RevenueManagementService {
 
     } catch (error) {
       console.error('Balance threshold notification check error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verify revenue distribution integrity
+   */
+  static async verifyRevenueDistributionIntegrity(transactionId, totalAmount, serviceCharge, hospitalAmount) {
+    try {
+      const errors = [];
+      
+      // Check if amounts add up correctly
+      const calculatedTotal = roundTaka(serviceCharge + hospitalAmount);
+      if (!areAmountsEqual(totalAmount, calculatedTotal, 0.01)) {
+        errors.push(`Amount mismatch: Expected ${formatTaka(totalAmount)}, Calculated ${formatTaka(calculatedTotal)}`);
+      }
+
+      // Verify transaction exists and amounts match
+      const transaction = Transaction.findById(transactionId);
+      if (transaction) {
+        if (!areAmountsEqual(transaction.amount, totalAmount, 0.01)) {
+          errors.push(`Transaction amount mismatch: DB ${formatTaka(transaction.amount)}, Expected ${formatTaka(totalAmount)}`);
+        }
+        
+        if (!areAmountsEqual(transaction.serviceCharge, serviceCharge, 0.01)) {
+          errors.push(`Service charge mismatch: DB ${formatTaka(transaction.serviceCharge)}, Expected ${formatTaka(serviceCharge)}`);
+        }
+        
+        if (!areAmountsEqual(transaction.hospitalAmount, hospitalAmount, 0.01)) {
+          errors.push(`Hospital amount mismatch: DB ${formatTaka(transaction.hospitalAmount)}, Expected ${formatTaka(hospitalAmount)}`);
+        }
+      } else {
+        errors.push('Transaction not found in database');
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors,
+        actualTotal: calculatedTotal,
+        verifiedAt: new Date().toISOString()
+      };
+
+    } catch (error) {
+      ErrorHandler.logError(error, { 
+        context: 'revenue_integrity_verification',
+        transactionId,
+        totalAmount: formatTaka(totalAmount)
+      });
+      
+      return {
+        isValid: false,
+        errors: [`Integrity verification failed: ${error.message}`],
+        actualTotal: 0,
+        verifiedAt: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Send revenue notification with error handling
+   */
+  static async sendRevenueNotificationWithErrorHandling(transactionId, hospitalId, hospitalAmount, serviceCharge, totalAmount, hospitalBalance) {
+    try {
+      const hospitalAuthority = db.prepare(`
+        SELECT id FROM users 
+        WHERE userType = 'hospital-authority' AND hospital_id = ? 
+        LIMIT 1
+      `).get(hospitalId);
+
+      if (hospitalAuthority) {
+        const hospitalInfo = db.prepare('SELECT name FROM hospitals WHERE id = ?').get(hospitalId);
+        const transaction = Transaction.findById(transactionId);
+        const booking = transaction ? db.prepare('SELECT patientName, resourceType FROM bookings WHERE id = ?').get(transaction.bookingId) : null;
+        
+        await NotificationService.sendRevenueNotification(
+          hospitalId,
+          hospitalAuthority.id,
+          {
+            hospitalName: hospitalInfo?.name || 'Hospital',
+            amount: formatTaka(hospitalAmount),
+            transactionId: transaction?.transactionId,
+            bookingId: transaction?.bookingId,
+            resourceType: booking?.resourceType || 'Resource',
+            patientName: booking?.patientName || 'Patient',
+            serviceCharge: formatTaka(serviceCharge),
+            totalAmount: formatTaka(totalAmount),
+            currentBalance: formatTaka(hospitalBalance?.currentBalance || 0),
+            currency: 'BDT',
+            currencySymbol: '৳'
+          }
+        );
+      }
+    } catch (error) {
+      ErrorHandler.logError(error, { 
+        context: 'revenue_notification',
+        transactionId,
+        hospitalId,
+        amount: formatTaka(hospitalAmount)
+      });
       throw error;
     }
   }

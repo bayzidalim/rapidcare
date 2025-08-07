@@ -36,4 +36,8 @@ router.delete('/blood-requests/:id', adminController.deleteBloodRequest);
 
 router.get('/stats', adminController.getStats);
 
+// Financial Analytics Routes
+router.get('/financials', adminController.getPlatformFinancials);
+router.get('/service-charges', adminController.getServiceChargeAnalytics);
+
 module.exports = router; 

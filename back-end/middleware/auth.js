@@ -15,8 +15,10 @@ const authenticate = (req, res, next) => {
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     const decoded = UserService.verifyToken(token);
     
-    // Get user from database
-    const user = UserService.getById(decoded.userId);
+    // Get user from database (handle both userId and id for compatibility)
+    const userId = decoded.userId || decoded.id;
+    const user = UserService.getById(userId);
+    
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -273,6 +275,31 @@ const hasHospitalAccess = (user, hospitalId) => {
   return false;
 };
 
+// Generic role requirement middleware
+const requireRole = (roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+        code: 'AUTH_REQUIRED'
+      });
+    }
+
+    const allowedRoles = Array.isArray(roles) ? roles : [roles];
+    
+    if (!allowedRoles.includes(req.user.userType)) {
+      return res.status(403).json({
+        success: false,
+        error: `Access denied. Required role: ${allowedRoles.join(' or ')}`,
+        code: 'ACCESS_DENIED'
+      });
+    }
+
+    next();
+  };
+};
+
 module.exports = {
   authenticate,
   authorizeUserType,
@@ -283,6 +310,7 @@ module.exports = {
   requireAdmin,
   requireHospitalAuthority,
   requireOwnHospital,
+  requireRole,
   hasRole,
   hasHospitalAccess
 }; 

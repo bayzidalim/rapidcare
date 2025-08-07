@@ -6,6 +6,9 @@ const { authenticate, authorizeUserType, authorizePermission } = require('../mid
 // POST /api/bookings - Create new booking (authenticated users)
 router.post('/', authenticate, bookingController.createBooking);
 
+// POST /api/bookings/payment - Process booking payment (authenticated users)
+router.post('/payment', authenticate, bookingController.processBookingPayment);
+
 // GET /api/bookings/user - Get current user bookings
 router.get('/user', authenticate, bookingController.getUserBookings);
 

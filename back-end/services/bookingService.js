@@ -4,10 +4,10 @@ const HospitalService = require('./hospitalService');
 class BookingService {
   // Create new booking
   static create(bookingData) {
-    // Check resource availability
-    const hospital = HospitalService.getById(bookingData.hospitalId);
+    // Check resource availability (only approved hospitals)
+    const hospital = HospitalService.getById(bookingData.hospitalId, false);
     if (!hospital) {
-      throw new Error('Hospital not found');
+      throw new Error('Hospital not found or not approved');
     }
 
     const resource = hospital.resources[bookingData.resourceType];
@@ -243,12 +243,12 @@ class BookingService {
   // Get base amount for resource type
   static getBaseAmount(resourceType, duration = 24) {
     const baseRates = {
-      beds: 100, // $100 per day
-      icu: 500,  // $500 per day
-      operationTheatres: 1000 // $1000 per day
+      beds: 120, // ৳120 per day
+      icu: 600,  // ৳600 per day
+      operationTheatres: 1200 // ৳1200 per day
     };
 
-    const baseRate = baseRates[resourceType] || 100;
+    const baseRate = baseRates[resourceType] || 120;
     return baseRate * (duration / 24); // Convert hours to days
   }
 

@@ -1,5 +1,7 @@
 const BookingService = require('../services/bookingService');
 const BookingApprovalService = require('../services/bookingApprovalService');
+const User = require('../models/User');
+const HospitalPricing = require('../models/HospitalPricing');
 
 // Create a new booking
 exports.createBooking = async (req, res) => {
@@ -402,6 +404,105 @@ exports.getBookingHistory = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch booking history'
+    });
+  }
+};
+
+// Process booking payment
+exports.processBookingPayment = async (req, res) => {
+  try {
+    const { bookingId, transactionId, amount } = req.body;
+
+    // Validate required fields
+    if (!bookingId || !transactionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Booking ID and transaction ID are required'
+      });
+    }
+
+    // Get booking details
+    const booking = BookingService.getById(bookingId);
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        error: 'Booking not found'
+      });
+    }
+
+    // Check if user owns this booking
+    if (booking.userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only pay for your own bookings'
+      });
+    }
+
+    // Check if booking is already paid
+    if (booking.paymentStatus === 'paid') {
+      return res.status(400).json({
+        success: false,
+        error: 'Booking is already paid'
+      });
+    }
+
+    // Calculate payment amount using hospital pricing
+    const costBreakdown = HospitalPricing.calculateBookingCost(
+      booking.hospitalId,
+      booking.resourceType,
+      booking.estimatedDuration || 24
+    );
+
+    const paymentAmount = amount || costBreakdown.total_cost;
+
+    // Check user balance
+    if (!User.hasSufficientBalance(req.user.id, paymentAmount)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Insufficient balance. Please add funds to your account.',
+        data: {
+          required_amount: paymentAmount,
+          current_balance: User.getBalance(req.user.id),
+          shortfall: paymentAmount - User.getBalance(req.user.id)
+        }
+      });
+    }
+
+    // Process payment (deduct balance)
+    const paymentResult = User.processPayment(
+      req.user.id,
+      paymentAmount,
+      bookingId,
+      transactionId,
+      costBreakdown
+    );
+
+    // Update booking status
+    BookingService.updatePaymentStatus(bookingId, 'paid', 'balance', transactionId);
+
+    // Get updated booking
+    const updatedBooking = BookingService.getById(bookingId);
+
+    res.json({
+      success: true,
+      data: {
+        booking: updatedBooking,
+        payment: {
+          amount: paymentAmount,
+          transaction_id: transactionId,
+          previous_balance: paymentResult.previousBalance,
+          new_balance: paymentResult.newBalance,
+          cost_breakdown: costBreakdown
+        }
+      },
+      message: 'Payment processed successfully'
+    });
+
+  } catch (error) {
+    console.error('Error processing booking payment:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Payment processing failed'
     });
   }
 }; 

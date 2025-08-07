@@ -25,6 +25,12 @@ app.use('/api/pricing', require('./routes/pricing'));
 app.use('/api/revenue', require('./routes/revenue'));
 app.use('/api/polling', require('./routes/polling'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/audit', require('./routes/audit'));
+// Initialize reconciliation routes
+const { router: reconciliationRouter, initializeReconciliationService } = require('./routes/reconciliation');
+initializeReconciliationService(db);
+app.use('/api/reconciliation', reconciliationRouter);
+app.use('/api/security', require('./routes/security'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -48,12 +54,38 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
+// Initialize reconciliation scheduler
+const ReconciliationScheduler = require('./jobs/reconciliationScheduler');
+let reconciliationScheduler;
+
 // Only start server if not in test environment
 if (process.env.NODE_ENV !== 'test') {
+  // Start reconciliation scheduler
+  reconciliationScheduler = new ReconciliationScheduler(db);
+  reconciliationScheduler.startAll();
+  
   app.listen(PORT, () => {
     console.log(`🚀 RapidCare API server running on port ${PORT}`);
     console.log(`🏥 Emergency Care, Delivered Fast - Ready to serve critical medical needs`);
     console.log(`📊 Health check available at: http://localhost:${PORT}/api/health`);
+    console.log(`💰 Financial reconciliation scheduler started`);
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    if (reconciliationScheduler) {
+      reconciliationScheduler.stopAll();
+    }
+    process.exit(0);
+  });
+
+  process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully');
+    if (reconciliationScheduler) {
+      reconciliationScheduler.stopAll();
+    }
+    process.exit(0);
   });
 }
 

@@ -35,8 +35,8 @@ try {
     INSERT INTO hospitals (
       name, description, type, street, city, state, zipCode, country,
       phone, email, emergency, total_beds, icu_beds, operation_theaters,
-      approval_status, approved_by, approved_at, submitted_at, isActive
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
+      approval_status, approved_at, submitted_at, isActive
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
   `).run(
         'Test General Hospital',
         'A comprehensive medical facility providing quality healthcare',
@@ -52,8 +52,7 @@ try {
         50,  // total_beds
         10,  // icu_beds
         5,   // operation_theaters
-        'approved',
-        1    // approved_by user id
+        'approved'
     );
 
     const hospitalId = hospitalResult.lastInsertRowid;

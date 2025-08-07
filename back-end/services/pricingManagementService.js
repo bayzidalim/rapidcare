@@ -1,43 +1,141 @@
 const HospitalPricing = require('../models/HospitalPricing');
 const Hospital = require('../models/Hospital');
+const ErrorHandler = require('../utils/errorHandler');
+const { formatTaka, parseTaka, isValidTakaAmount, roundTaka } = require('../utils/currencyUtils');
 const db = require('../config/database');
 
 class PricingManagementService {
   /**
-   * Update hospital pricing for a specific resource type
+   * Update hospital pricing with comprehensive validation and error handling
    */
   static updateHospitalPricing(hospitalId, pricingData, userId) {
+    let rollbackRequired = false;
+    const pricingContext = {
+      hospitalId,
+      resourceType: pricingData.resourceType,
+      userId,
+      startTime: new Date().toISOString()
+    };
+
     try {
+      // Begin database transaction for atomicity
+      db.exec('BEGIN TRANSACTION');
+      rollbackRequired = true;
+
       // Validate hospital exists
       const hospital = Hospital.findById(hospitalId);
       if (!hospital) {
-        throw new Error('Hospital not found');
+        const error = new Error('Hospital not found');
+        return ErrorHandler.createError('pricing', 'HOSPITAL_NOT_FOUND', {
+          hospitalId,
+          message: 'Hospital not found for pricing update'
+        });
       }
 
-      // Validate pricing data
-      const validation = HospitalPricing.validatePricingData(pricingData);
+      // Comprehensive Taka pricing validation
+      const validation = ErrorHandler.validateTakaPricing(pricingData);
       if (!validation.isValid) {
-        throw new Error(`Pricing validation failed: ${validation.errors.join(', ')}`);
+        db.exec('ROLLBACK');
+        return {
+          success: false,
+          errors: validation.errors,
+          warnings: validation.warnings,
+          message: 'Pricing validation failed'
+        };
       }
 
-      // Update pricing (this will deactivate old pricing and create new)
-      const updatedPricing = HospitalPricing.updatePricing(
-        hospitalId,
-        pricingData.resourceType,
-        pricingData,
-        userId
-      );
+      // Additional business rule validation
+      const businessValidation = this.validatePricingBusinessRules(pricingData, hospital);
+      if (!businessValidation.isValid) {
+        db.exec('ROLLBACK');
+        return {
+          success: false,
+          errors: businessValidation.errors,
+          warnings: businessValidation.warnings,
+          suggestions: businessValidation.suggestions,
+          message: 'Pricing business rules validation failed'
+        };
+      }
+
+      // Sanitize and round pricing data
+      const sanitizedPricingData = this.sanitizePricingData(pricingData);
+
+      // Check for pricing constraints and market validation
+      const constraintValidation = this.validatePricingConstraints(sanitizedPricingData);
+      const warnings = constraintValidation.warnings || [];
+
+      // Update pricing with error handling
+      let updatedPricing;
+      try {
+        updatedPricing = HospitalPricing.updatePricing(
+          hospitalId,
+          sanitizedPricingData.resourceType,
+          sanitizedPricingData,
+          userId
+        );
+      } catch (updateError) {
+        const error = new Error(`Pricing update operation failed: ${updateError.message}`);
+        return ErrorHandler.createError('pricing', 'INVALID_RATE', {
+          hospitalId,
+          resourceType: pricingData.resourceType,
+          originalError: updateError.message
+        });
+      }
+
+      // Verify pricing update integrity
+      const integrityCheck = this.verifyPricingUpdateIntegrity(updatedPricing, sanitizedPricingData);
+      if (!integrityCheck.isValid) {
+        const error = new Error(`Pricing update integrity check failed: ${integrityCheck.errors.join(', ')}`);
+        return ErrorHandler.handleFinancialConsistencyError(error, {
+          expected: formatTaka(sanitizedPricingData.baseRate),
+          actual: formatTaka(updatedPricing.baseRate),
+          affectedTransactions: [updatedPricing.id]
+        });
+      }
+
+      // Commit transaction
+      db.exec('COMMIT');
+      rollbackRequired = false;
 
       return {
         success: true,
-        pricing: updatedPricing,
+        pricing: {
+          ...updatedPricing,
+          baseRate: formatTaka(updatedPricing.baseRate),
+          hourlyRate: updatedPricing.hourlyRate ? formatTaka(updatedPricing.hourlyRate) : null,
+          minimumCharge: updatedPricing.minimumCharge ? formatTaka(updatedPricing.minimumCharge) : null,
+          maximumCharge: updatedPricing.maximumCharge ? formatTaka(updatedPricing.maximumCharge) : null
+        },
+        warnings,
         message: `Pricing updated successfully for ${pricingData.resourceType}`,
-        updatedAt: new Date().toISOString()
+        messageEn: `Pricing updated successfully for ${pricingData.resourceType}`,
+        messageBn: `${pricingData.resourceType} এর জন্য মূল্য সফলভাবে আপডেট করা হয়েছে`,
+        updatedAt: new Date().toISOString(),
+        integrityVerified: true
       };
 
     } catch (error) {
-      console.error('Pricing update error:', error);
-      throw error;
+      // Rollback on error if transaction was started
+      if (rollbackRequired) {
+        try {
+          db.exec('ROLLBACK');
+        } catch (rollbackError) {
+          ErrorHandler.logError(rollbackError, { 
+            context: 'pricing_update_rollback', 
+            originalError: error.message,
+            ...pricingContext 
+          });
+        }
+      }
+
+      // Log the error with full context
+      ErrorHandler.logError(error, pricingContext);
+
+      // Return structured error response
+      return ErrorHandler.createError('pricing', 'INVALID_RATE', {
+        ...pricingContext,
+        originalError: error.message
+      });
     }
   }
 
@@ -112,10 +210,159 @@ class PricingManagementService {
   }
 
   /**
-   * Validate pricing data before update
+   * Validate pricing business rules
+   */
+  static validatePricingBusinessRules(pricingData, hospital) {
+    const errors = [];
+    const warnings = [];
+    const suggestions = [];
+
+    // Resource type validation
+    const validResourceTypes = ['beds', 'icu', 'operationTheatres'];
+    if (!validResourceTypes.includes(pricingData.resourceType)) {
+      errors.push(ErrorHandler.createError('pricing', 'INVALID_RATE', {
+        reason: 'Invalid resource type'
+      }));
+    }
+
+    // Rate consistency validation
+    if (pricingData.baseRate && pricingData.hourlyRate) {
+      if (pricingData.hourlyRate > pricingData.baseRate) {
+        errors.push(ErrorHandler.createError('pricing', 'INCONSISTENT_PRICING'));
+      }
+    }
+
+    // Minimum/Maximum charge validation
+    if (pricingData.minimumCharge && pricingData.maximumCharge) {
+      if (pricingData.minimumCharge > pricingData.maximumCharge) {
+        errors.push(ErrorHandler.createError('pricing', 'INCONSISTENT_PRICING', {
+          reason: 'Minimum charge cannot be greater than maximum charge'
+        }));
+      }
+
+      const ratio = pricingData.maximumCharge / pricingData.minimumCharge;
+      if (ratio > 10) {
+        warnings.push(ErrorHandler.createError('pricing', 'RATE_TOO_HIGH', {
+          reason: 'Large gap between minimum and maximum charges'
+        }));
+        suggestions.push('Consider reducing the gap between minimum and maximum charges for better patient understanding');
+      }
+    }
+
+    // Hospital-specific validation
+    if (hospital.city) {
+      const cityBasedRanges = this.getCityBasedPricingRanges(hospital.city, pricingData.resourceType);
+      if (cityBasedRanges && pricingData.baseRate) {
+        if (pricingData.baseRate < cityBasedRanges.min) {
+          warnings.push(ErrorHandler.createError('pricing', 'RATE_TOO_LOW'));
+          suggestions.push(`Consider pricing between ${formatTaka(cityBasedRanges.min)} and ${formatTaka(cityBasedRanges.max)} for ${hospital.city}`);
+        } else if (pricingData.baseRate > cityBasedRanges.max) {
+          warnings.push(ErrorHandler.createError('pricing', 'RATE_TOO_HIGH'));
+          suggestions.push(`Consider pricing between ${formatTaka(cityBasedRanges.min)} and ${formatTaka(cityBasedRanges.max)} for ${hospital.city}`);
+        }
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings,
+      suggestions
+    };
+  }
+
+  /**
+   * Get city-based pricing ranges
+   */
+  static getCityBasedPricingRanges(city, resourceType) {
+    const cityRanges = {
+      'Dhaka': {
+        'beds': { min: 800, max: 5000 },
+        'icu': { min: 3000, max: 15000 },
+        'operationTheatres': { min: 8000, max: 80000 }
+      },
+      'Chittagong': {
+        'beds': { min: 600, max: 4000 },
+        'icu': { min: 2500, max: 12000 },
+        'operationTheatres': { min: 6000, max: 60000 }
+      },
+      'Sylhet': {
+        'beds': { min: 500, max: 3000 },
+        'icu': { min: 2000, max: 10000 },
+        'operationTheatres': { min: 5000, max: 50000 }
+      }
+    };
+
+    return cityRanges[city] ? cityRanges[city][resourceType] : null;
+  }
+
+  /**
+   * Sanitize pricing data
+   */
+  static sanitizePricingData(pricingData) {
+    const sanitized = { ...pricingData };
+
+    // Round all monetary values to proper Taka precision
+    if (sanitized.baseRate !== undefined) {
+      sanitized.baseRate = roundTaka(sanitized.baseRate);
+    }
+    if (sanitized.hourlyRate !== undefined) {
+      sanitized.hourlyRate = roundTaka(sanitized.hourlyRate);
+    }
+    if (sanitized.minimumCharge !== undefined) {
+      sanitized.minimumCharge = roundTaka(sanitized.minimumCharge);
+    }
+    if (sanitized.maximumCharge !== undefined) {
+      sanitized.maximumCharge = roundTaka(sanitized.maximumCharge);
+    }
+
+    // Ensure currency is set to BDT
+    sanitized.currency = 'BDT';
+
+    return sanitized;
+  }
+
+  /**
+   * Verify pricing update integrity
+   */
+  static verifyPricingUpdateIntegrity(updatedPricing, originalData) {
+    const errors = [];
+
+    // Check if base rate was updated correctly
+    if (originalData.baseRate !== undefined) {
+      if (Math.abs(updatedPricing.baseRate - originalData.baseRate) > 0.01) {
+        errors.push(`Base rate mismatch: Expected ${formatTaka(originalData.baseRate)}, Got ${formatTaka(updatedPricing.baseRate)}`);
+      }
+    }
+
+    // Check if hourly rate was updated correctly
+    if (originalData.hourlyRate !== undefined) {
+      if (Math.abs((updatedPricing.hourlyRate || 0) - originalData.hourlyRate) > 0.01) {
+        errors.push(`Hourly rate mismatch: Expected ${formatTaka(originalData.hourlyRate)}, Got ${formatTaka(updatedPricing.hourlyRate || 0)}`);
+      }
+    }
+
+    // Check resource type
+    if (updatedPricing.resourceType !== originalData.resourceType) {
+      errors.push(`Resource type mismatch: Expected ${originalData.resourceType}, Got ${updatedPricing.resourceType}`);
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      verifiedAt: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Validate pricing data (legacy method for backward compatibility)
    */
   static validatePricingData(pricingData) {
-    return HospitalPricing.validatePricingData(pricingData);
+    const validation = ErrorHandler.validateTakaPricing(pricingData);
+    return {
+      isValid: validation.isValid,
+      errors: validation.errors.map(error => error.error?.messageEn || error.message || 'Validation error')
+    };
   }
 
   /**

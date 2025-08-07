@@ -26,7 +26,9 @@ exports.getAllHospitals = async (req, res) => {
 // Get specific hospital by ID
 exports.getHospitalById = async (req, res) => {
   try {
-    const hospital = HospitalService.getById(req.params.id);
+    // Allow admins and hospital authorities to see unapproved hospitals
+    const includeUnapproved = req.user && (req.user.userType === 'admin' || req.user.userType === 'hospital-authority');
+    const hospital = HospitalService.getById(req.params.id, includeUnapproved);
     
     if (!hospital) {
       return res.status(404).json({
@@ -260,6 +262,49 @@ exports.getMyHospital = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch hospital'
+    });
+  }
+};
+
+// Resubmit current user's hospital information (for hospital authorities)
+exports.resubmitMyHospital = async (req, res) => {
+  try {
+    if (req.user.userType !== 'hospital-authority') {
+      return res.status(403).json({
+        success: false,
+        error: 'Only hospital authorities can resubmit hospital information'
+      });
+    }
+
+    const hospital = HospitalService.getByUserId(req.user.id);
+    
+    if (!hospital) {
+      return res.status(404).json({
+        success: false,
+        error: 'No hospital found for this authority'
+      });
+    }
+
+    // Only allow resubmission if hospital was rejected
+    if (hospital.approvalStatus !== 'rejected') {
+      return res.status(400).json({
+        success: false,
+        error: 'Hospital can only be resubmitted if it was rejected'
+      });
+    }
+
+    const updatedHospital = HospitalService.resubmitHospital(hospital.id, req.body, req.user.id);
+    
+    res.json({
+      success: true,
+      message: 'Hospital information resubmitted successfully',
+      data: updatedHospital
+    });
+  } catch (error) {
+    console.error('Error resubmitting hospital:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resubmit hospital information'
     });
   }
 };

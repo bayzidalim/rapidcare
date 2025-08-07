@@ -210,20 +210,29 @@ const adminController = {
   approveHospital: (req, res) => {
     try {
       checkAdmin(req, res, () => {
-        const hospital = HospitalService.approveHospital(req.params.id, req.user.id);
-        if (!hospital) {
-          return res.status(404).json({
+        try {
+          const hospital = HospitalService.approveHospital(req.params.id, req.user.id);
+          if (!hospital) {
+            return res.status(404).json({
+              success: false,
+              error: 'Hospital not found'
+            });
+          }
+          res.json({
+            success: true,
+            data: hospital,
+            message: 'Hospital approved successfully'
+          });
+        } catch (serviceError) {
+          console.error('Hospital approval error:', serviceError);
+          res.status(400).json({
             success: false,
-            error: 'Hospital not found'
+            error: serviceError.message || 'Failed to approve hospital'
           });
         }
-        res.json({
-          success: true,
-          data: hospital,
-          message: 'Hospital approved successfully'
-        });
       });
     } catch (error) {
+      console.error('Admin approval error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to approve hospital'
@@ -242,20 +251,29 @@ const adminController = {
           });
         }
         
-        const hospital = HospitalService.rejectHospital(req.params.id, req.user.id, reason);
-        if (!hospital) {
-          return res.status(404).json({
+        try {
+          const hospital = HospitalService.rejectHospital(req.params.id, req.user.id, reason);
+          if (!hospital) {
+            return res.status(404).json({
+              success: false,
+              error: 'Hospital not found'
+            });
+          }
+          res.json({
+            success: true,
+            data: hospital,
+            message: 'Hospital rejected successfully'
+          });
+        } catch (serviceError) {
+          console.error('Hospital rejection error:', serviceError);
+          res.status(400).json({
             success: false,
-            error: 'Hospital not found'
+            error: serviceError.message || 'Failed to reject hospital'
           });
         }
-        res.json({
-          success: true,
-          data: hospital,
-          message: 'Hospital rejected successfully'
-        });
       });
     } catch (error) {
+      console.error('Admin rejection error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to reject hospital'
@@ -579,7 +597,119 @@ const adminController = {
         error: 'Failed to fetch stats'
       });
     }
+  },
+
+  // Service Charge Analytics
+  getServiceChargeAnalytics: (req, res) => {
+    try {
+      checkAdmin(req, res, () => {
+        const db = require('../config/database');
+        
+        // Get total service charges
+        const totalServiceCharges = db.prepare(`
+          SELECT COALESCE(SUM(service_charge), 0) as total
+          FROM simple_transactions 
+          WHERE transaction_type = 'payment' AND service_charge > 0
+        `).get();
+
+        // Get service charges by hospital
+        const serviceChargesByHospital = db.prepare(`
+          SELECT 
+            h.id as hospitalId,
+            h.name as hospitalName,
+            COALESCE(SUM(st.service_charge), 0) as totalServiceCharges,
+            COUNT(st.id) as transactionCount,
+            COALESCE(AVG(st.service_charge), 0) as averageServiceCharge
+          FROM hospitals h
+          LEFT JOIN bookings b ON h.id = b.hospitalId
+          LEFT JOIN simple_transactions st ON b.id = st.booking_id AND st.service_charge > 0
+          GROUP BY h.id, h.name
+          ORDER BY totalServiceCharges DESC
+        `).all();
+
+        // Get service charges over time (last 30 days)
+        const serviceChargesByTime = db.prepare(`
+          SELECT 
+            DATE(created_at) as date,
+            COALESCE(SUM(service_charge), 0) as serviceCharges,
+            COUNT(*) as transactionCount
+          FROM simple_transactions 
+          WHERE transaction_type = 'payment' 
+            AND service_charge > 0
+            AND created_at >= date('now', '-30 days')
+          GROUP BY DATE(created_at)
+          ORDER BY date DESC
+        `).all();
+
+        res.json({
+          success: true,
+          data: {
+            totalServiceCharges: totalServiceCharges.total,
+            earningsByHospital: serviceChargesByHospital,
+            earningsByTimePeriod: serviceChargesByTime,
+            topPerformingHospitals: serviceChargesByHospital.slice(0, 10).map(hospital => ({
+              hospitalId: hospital.hospitalId,
+              hospitalName: hospital.hospitalName,
+              totalRevenue: hospital.totalServiceCharges + (hospital.totalServiceCharges / 0.3 * 0.7), // Estimate total revenue
+              serviceCharges: hospital.totalServiceCharges,
+              transactionCount: hospital.transactionCount
+            }))
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error fetching service charge analytics:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch service charge analytics'
+      });
+    }
+  },
+
+  // Platform Financial Overview
+  getPlatformFinancials: (req, res) => {
+    try {
+      checkAdmin(req, res, () => {
+        const db = require('../config/database');
+        
+        // Get total revenue and service charges
+        const financials = db.prepare(`
+          SELECT 
+            COALESCE(SUM(amount), 0) as totalRevenue,
+            COALESCE(SUM(service_charge), 0) as totalServiceCharges,
+            COALESCE(SUM(hospital_amount), 0) as totalHospitalEarnings,
+            COUNT(*) as totalTransactions,
+            COALESCE(AVG(amount), 0) as averageTransactionAmount
+          FROM simple_transactions 
+          WHERE transaction_type = 'payment'
+        `).get();
+
+        const serviceChargeRate = financials.totalRevenue > 0 
+          ? financials.totalServiceCharges / financials.totalRevenue 
+          : 0.3;
+
+        res.json({
+          success: true,
+          data: {
+            totalRevenue: financials.totalRevenue,
+            totalServiceCharges: financials.totalServiceCharges,
+            totalHospitalEarnings: financials.totalHospitalEarnings,
+            totalTransactions: financials.totalTransactions,
+            averageTransactionAmount: financials.averageTransactionAmount,
+            serviceChargeRate: serviceChargeRate,
+            revenueGrowth: 0, // Placeholder for growth calculation
+            transactionGrowth: 0 // Placeholder for growth calculation
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error fetching platform financials:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch platform financials'
+      });
+    }
   }
 };
 
-module.exports = adminController; 
+module.exports = adminController;

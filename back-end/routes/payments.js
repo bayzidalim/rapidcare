@@ -325,9 +325,9 @@ router.get('/transaction/:transactionId', authenticate, async (req, res) => {
     }
 
     // Check authorization
-    if (transactionWithReceipt.transaction.userId !== req.user.id && 
-        req.user.userType !== 'admin' && 
-        req.user.userType !== 'hospital-authority') {
+    if (transactionWithReceipt.transaction.userId !== req.user.id &&
+      req.user.userType !== 'admin' &&
+      req.user.userType !== 'hospital-authority') {
       return res.status(403).json({
         success: false,
         error: 'Access denied'

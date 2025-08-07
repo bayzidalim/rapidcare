@@ -19,11 +19,23 @@ router.get('/search', hospitalController.searchHospitals);
 // GET /api/hospitals/resources - Get hospitals with available resources
 router.get('/resources', hospitalController.getHospitalsWithResources);
 
+// GET /api/hospitals/my-hospitals - Get hospitals managed by current user (admin only for management)
+router.get('/my-hospitals', authenticate, requireAdmin, hospitalController.getMyHospitals);
+
+// GET /api/hospitals/my-hospital - Get current user's hospital (for hospital authorities)
+router.get('/my-hospital', authenticate, requireHospitalAuthority, hospitalController.getMyHospital);
+
+// PUT /api/hospitals/my-hospital - Resubmit hospital information (hospital authority)
+router.put('/my-hospital', authenticate, requireHospitalAuthority, hospitalController.resubmitMyHospital);
+
 // GET /api/hospitals/:id - Get specific hospital
 router.get('/:id', hospitalController.getHospitalById);
 
 // POST /api/hospitals - Create new hospital (hospital authority only)
 router.post('/', authenticate, authorizeUserType(['hospital-authority']), hospitalController.createHospital);
+
+// PUT /api/hospitals/my-hospital/resources - Update own hospital resources (hospital authority)
+router.put('/my-hospital/resources', authenticate, requireHospitalAuthority, hospitalController.updateMyHospitalResources);
 
 // PUT /api/hospitals/:id/resources - Update hospital resources (hospital authority own hospital only)
 router.put('/:id/resources', authenticate, requireHospitalAuthority, requireOwnHospital, hospitalController.updateHospitalResources);
@@ -39,15 +51,6 @@ router.put('/:id', authenticate, requireHospitalAuthority, requireOwnHospital, h
 
 // DELETE /api/hospitals/:id - Delete hospital (admin only)
 router.delete('/:id', authenticate, requireAdmin, hospitalController.deleteHospital);
-
-// GET /api/hospitals/my-hospitals - Get hospitals managed by current user (admin only for management)
-router.get('/my-hospitals', authenticate, requireAdmin, hospitalController.getMyHospitals);
-
-// GET /api/hospitals/my-hospital - Get current user's hospital (for hospital authorities)
-router.get('/my-hospital', authenticate, requireHospitalAuthority, hospitalController.getMyHospital);
-
-// PUT /api/hospitals/my-hospital/resources - Update own hospital resources (hospital authority)
-router.put('/my-hospital/resources', authenticate, requireHospitalAuthority, hospitalController.updateMyHospitalResources);
 
 // Booking approval endpoints for hospital authorities
 // GET /api/hospitals/:id/bookings/pending - Get pending bookings for a hospital

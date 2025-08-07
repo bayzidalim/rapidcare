@@ -2,170 +2,558 @@ const Transaction = require('../models/Transaction');
 const PaymentConfig = require('../models/PaymentConfig');
 const Booking = require('../models/Booking');
 const NotificationService = require('./notificationService');
+const ErrorHandler = require('../utils/errorHandler');
+const { formatTaka, parseTaka, isValidTakaAmount, roundTaka } = require('../utils/currencyUtils');
+const db = require('../config/database');
+
+// Security imports
+const securityUtils = require('../utils/securityUtils');
+const auditService = require('./auditService');
+const fraudDetectionService = require('./fraudDetectionService');
+const securePaymentDataService = require('./securePaymentDataService');
 
 class PaymentProcessingService {
   /**
-   * Process booking payment through dummy payment gateway
+   * Process booking payment through bKash-style payment gateway with comprehensive error handling and security
    */
-  static async processBookingPayment(bookingId, paymentData, userId) {
+  static async processBookingPayment(bookingId, paymentData, userId, attemptCount = 1, requestContext = {}) {
+    let transaction = null;
+    const { ipAddress, userAgent, sessionId } = requestContext;
+    
     try {
+      // Begin database transaction for atomicity
+      db.exec('BEGIN TRANSACTION');
+
+      // Securely process payment data
+      const secureDataResult = await securePaymentDataService.processPaymentData(
+        paymentData, 
+        userId, 
+        'BOOKING_PAYMENT'
+      );
+
+      if (!secureDataResult.success) {
+        db.exec('ROLLBACK');
+        return {
+          success: false,
+          error: 'Payment data processing failed',
+          details: secureDataResult.error
+        };
+      }
+
+      const processedPaymentData = secureDataResult.processedData;
+
       // Validate booking exists and is payable
       const booking = Booking.findById(bookingId);
       if (!booking) {
-        throw new Error('Booking not found');
+        db.exec('ROLLBACK');
+        return ErrorHandler.createError('bkash', 'INVALID_TRANSACTION', {
+          bookingId,
+          reason: 'Booking not found'
+        });
       }
 
       if (booking.paymentStatus === 'paid') {
-        throw new Error('Booking has already been paid');
+        db.exec('ROLLBACK');
+        return ErrorHandler.createError('bkash', 'DUPLICATE_TRANSACTION', {
+          bookingId,
+          transactionId: booking.transactionId
+        });
       }
 
       if (booking.status === 'cancelled') {
-        throw new Error('Cannot pay for cancelled booking');
+        db.exec('ROLLBACK');
+        return ErrorHandler.createError('bkash', 'INVALID_TRANSACTION', {
+          bookingId,
+          reason: 'Cannot pay for cancelled booking'
+        });
       }
 
-      // Validate payment data
-      const validation = this.validatePaymentData(paymentData);
+      // Validate bKash payment data with comprehensive error handling
+      const validation = ErrorHandler.validateBkashPaymentData({
+        ...paymentData,
+        amount: booking.paymentAmount
+      });
+      
       if (!validation.isValid) {
-        throw new Error(`Payment validation failed: ${validation.errors.join(', ')}`);
+        db.exec('ROLLBACK');
+        return {
+          success: false,
+          errors: validation.errors,
+          message: 'Payment validation failed'
+        };
       }
 
-      // Get payment configuration
-      const config = PaymentConfig.getConfigForHospital(booking.hospitalId);
-      const serviceCharge = PaymentConfig.calculateServiceCharge(booking.paymentAmount, booking.hospitalId);
-      const hospitalAmount = booking.paymentAmount - serviceCharge;
+      // Perform fraud detection analysis
+      const fraudAnalysis = await fraudDetectionService.analyzeTransaction({
+        userId,
+        amountTaka: parseFloat(booking.paymentAmount),
+        mobileNumber: paymentData.mobileNumber,
+        ipAddress,
+        userAgent,
+        sessionId,
+        transactionTime: new Date()
+      });
+
+      if (!fraudAnalysis.success) {
+        console.warn('Fraud analysis failed, proceeding with caution:', fraudAnalysis.error);
+      } else {
+        // Handle fraud detection results
+        switch (fraudAnalysis.analysis.recommendation.action) {
+          case 'BLOCK':
+            db.exec('ROLLBACK');
+            await auditService.logSecurityEvent({
+              eventType: 'PAYMENT_BLOCKED_FRAUD',
+              userId,
+              ipAddress,
+              userAgent,
+              sessionId,
+              eventData: {
+                bookingId,
+                riskScore: fraudAnalysis.analysis.riskScore,
+                fraudFlags: fraudAnalysis.analysis.fraudFlags,
+                amount: booking.paymentAmount
+              },
+              severity: 'CRITICAL'
+            });
+            
+            return {
+              success: false,
+              error: 'Payment blocked due to security concerns. Please contact support.',
+              errorCode: 'FRAUD_DETECTED',
+              riskLevel: fraudAnalysis.analysis.riskLevel
+            };
+
+          case 'CHALLENGE':
+            // For now, we'll log and continue, but in production this would require additional verification
+            await auditService.logSecurityEvent({
+              eventType: 'PAYMENT_REQUIRES_VERIFICATION',
+              userId,
+              ipAddress,
+              userAgent,
+              sessionId,
+              eventData: {
+                bookingId,
+                riskScore: fraudAnalysis.analysis.riskScore,
+                fraudFlags: fraudAnalysis.analysis.fraudFlags,
+                amount: booking.paymentAmount
+              },
+              severity: 'HIGH'
+            });
+            break;
+        }
+      }
+
+      // Validate Taka amount
+      const amountValidation = ErrorHandler.validateTakaAmount(booking.paymentAmount, {
+        minAmount: 10,
+        maxAmount: 25000
+      });
+
+      if (!amountValidation.isValid) {
+        db.exec('ROLLBACK');
+        return {
+          success: false,
+          errors: amountValidation.errors,
+          message: 'Invalid payment amount'
+        };
+      }
+
+      // Get payment configuration with error handling
+      let config, serviceCharge, hospitalAmount;
+      try {
+        config = PaymentConfig.getConfigForHospital(booking.hospitalId);
+        serviceCharge = PaymentConfig.calculateServiceCharge(amountValidation.sanitizedAmount, booking.hospitalId);
+        hospitalAmount = roundTaka(amountValidation.sanitizedAmount - serviceCharge);
+      } catch (configError) {
+        db.exec('ROLLBACK');
+        ErrorHandler.logError(configError, { bookingId, hospitalId: booking.hospitalId });
+        return ErrorHandler.handleRevenueDistributionError(configError, {
+          transactionId: null,
+          hospitalId: booking.hospitalId,
+          amount: amountValidation.sanitizedAmount
+        });
+      }
 
       // Generate unique transaction ID
-      const transactionId = this.generateTransactionId();
+      const transactionId = securityUtils.generateSecureTransactionRef();
 
-      // Create transaction record
+      // Create transaction record with bKash-style data and security metadata
       const transactionData = {
         bookingId,
         userId,
         hospitalId: booking.hospitalId,
-        amount: booking.paymentAmount,
-        serviceCharge,
-        hospitalAmount,
-        paymentMethod: paymentData.paymentMethod,
+        amount: amountValidation.sanitizedAmount,
+        serviceCharge: roundTaka(serviceCharge),
+        hospitalAmount: roundTaka(hospitalAmount),
+        paymentMethod: 'bkash',
         transactionId,
         status: 'pending',
         paymentData: {
-          cardLast4: paymentData.cardNumber ? paymentData.cardNumber.slice(-4) : null,
-          cardType: paymentData.cardType || null,
-          paymentMethod: paymentData.paymentMethod,
-          billingAddress: paymentData.billingAddress || null
+          mobileNumber: securityUtils.maskMobileNumber(paymentData.mobileNumber),
+          paymentMethod: 'bkash',
+          attemptCount,
+          bkashTransactionId: null, // Will be set after successful payment
+          securityMetadata: processedPaymentData.security_metadata,
+          riskScore: fraudAnalysis.success ? fraudAnalysis.analysis.riskScore : 0,
+          fraudFlags: fraudAnalysis.success ? fraudAnalysis.analysis.fraudFlags : []
         }
       };
 
-      const transaction = Transaction.create(transactionData);
+      transaction = Transaction.create(transactionData);
 
-      // Process payment through dummy gateway
-      const paymentResult = await this.processDummyPayment(paymentData, booking.paymentAmount);
+      // Process payment through bKash simulation with comprehensive error handling
+      const paymentResult = await this.processBkashPayment(
+        processedPaymentData, 
+        amountValidation.sanitizedAmount, 
+        attemptCount,
+        requestContext
+      );
 
       if (paymentResult.success) {
         // Payment successful - confirm transaction
-        const confirmedTransaction = this.confirmPayment(transaction.id);
+        const confirmedTransaction = this.confirmBkashPayment(transaction.id, paymentResult.bkashTransactionId);
         
         // Update booking payment status
-        Booking.updatePaymentStatus(bookingId, 'paid', paymentData.paymentMethod, transactionId);
+        Booking.updatePaymentStatus(bookingId, 'paid', 'bkash', transactionId);
 
-        // Send payment confirmation notification
-        try {
-          await NotificationService.sendPaymentConfirmationNotification(
-            transaction.id,
-            userId,
-            {
-              hospitalName: booking.hospitalName || 'Hospital',
-              paymentMethod: paymentData.paymentMethod
-            }
-          );
-        } catch (notificationError) {
-          console.error('Failed to send payment confirmation notification:', notificationError);
-          // Don't fail the payment if notification fails
-        }
+        // Log successful financial operation
+        await auditService.logFinancialOperation({
+          transactionId,
+          userId,
+          operationType: 'BKASH_PAYMENT',
+          amountTaka: amountValidation.sanitizedAmount,
+          currency: 'BDT',
+          paymentMethod: 'bkash',
+          mobileNumber: paymentData.mobileNumber,
+          status: 'completed',
+          ipAddress,
+          userAgent,
+          sessionId,
+          riskScore: fraudAnalysis.success ? fraudAnalysis.analysis.riskScore : 0,
+          fraudFlags: fraudAnalysis.success ? fraudAnalysis.analysis.fraudFlags : []
+        });
 
-        // Generate and send receipt
-        try {
-          await NotificationService.generateAndSendReceipt(transaction.id, userId);
-        } catch (receiptError) {
-          console.error('Failed to generate and send receipt:', receiptError);
-          // Don't fail the payment if receipt generation fails
-        }
+        // Commit database transaction
+        db.exec('COMMIT');
+
+        // Send bKash-style payment confirmation notification (non-blocking)
+        this.sendBkashConfirmationNotification(transaction.id, userId, booking, paymentResult)
+          .catch(error => ErrorHandler.logError(error, { transactionId: transaction.id, type: 'notification' }));
+
+        // Generate and send bKash-style receipt (non-blocking)
+        this.generateAndSendBkashReceipt(transaction.id, userId)
+          .catch(error => ErrorHandler.logError(error, { transactionId: transaction.id, type: 'receipt' }));
 
         return {
           success: true,
           transaction: confirmedTransaction,
           paymentResult,
-          message: 'Payment processed successfully'
+          message: 'bKash payment processed successfully',
+          messageEn: 'bKash payment processed successfully',
+          messageBn: 'bKash পেমেন্ট সফলভাবে সম্পন্ন হয়েছে',
+          receiptUrl: `/api/payments/bkash/${transactionId}/receipt`
         };
       } else {
-        // Payment failed - update transaction status
-        this.handlePaymentFailure(transaction.id, paymentResult.error);
+        // Payment failed - handle with retry logic
+        db.exec('ROLLBACK');
         
-        return {
-          success: false,
-          transaction,
-          error: paymentResult.error,
-          message: 'Payment processing failed'
-        };
+        // Log failed financial operation
+        await auditService.logFinancialOperation({
+          transactionId,
+          userId,
+          operationType: 'BKASH_PAYMENT',
+          amountTaka: amountValidation.sanitizedAmount,
+          currency: 'BDT',
+          paymentMethod: 'bkash',
+          mobileNumber: paymentData.mobileNumber,
+          status: 'failed',
+          ipAddress,
+          userAgent,
+          sessionId,
+          riskScore: fraudAnalysis.success ? fraudAnalysis.analysis.riskScore : 0,
+          fraudFlags: fraudAnalysis.success ? fraudAnalysis.analysis.fraudFlags : []
+        });
+        
+        const errorResponse = ErrorHandler.handleBkashPaymentError(
+          new Error(paymentResult.error), 
+          attemptCount
+        );
+
+        // Update transaction status to failed
+        if (transaction && transaction.id) {
+          this.handleBkashPaymentFailure(transaction.id, paymentResult.error, attemptCount);
+        }
+
+        // Add retry information if applicable
+        if (errorResponse.error.canRetry) {
+          errorResponse.retryFunction = () => this.processBookingPayment(
+            bookingId, 
+            paymentData, 
+            userId, 
+            attemptCount + 1, 
+            requestContext
+          );
+        }
+
+        return errorResponse;
       }
 
     } catch (error) {
-      console.error('Payment processing error:', error);
-      throw error;
+      // Rollback database transaction on any error
+      try {
+        db.exec('ROLLBACK');
+      } catch (rollbackError) {
+        ErrorHandler.logError(rollbackError, { context: 'transaction_rollback', originalError: error.message });
+      }
+
+      // Log the error with context
+      ErrorHandler.logError(error, { 
+        bookingId, 
+        userId, 
+        attemptCount,
+        transactionId: transaction?.id,
+        context: 'payment_processing' 
+      });
+
+      // Return structured error response
+      return ErrorHandler.handleBkashPaymentError(error, attemptCount);
     }
   }
 
   /**
-   * Validate payment data
+   * Process bKash payment with comprehensive error handling and security
    */
-  static validatePaymentData(paymentData) {
-    const errors = [];
+  static async processBkashPayment(paymentData, amount, attemptCount = 1, requestContext = {}) {
+    try {
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 1000 + (attemptCount * 500)));
 
-    if (!paymentData.paymentMethod) {
-      errors.push('Payment method is required');
+      // Simulate different payment outcomes based on mobile number and amount
+      const simulationResult = this.simulateBkashPaymentOutcome(paymentData, amount, attemptCount);
+
+      if (simulationResult.shouldFail) {
+        return {
+          success: false,
+          error: simulationResult.reason,
+          errorCode: simulationResult.code,
+          attemptCount,
+          bkashResponse: {
+            statusCode: simulationResult.statusCode,
+            statusMessage: simulationResult.reason
+          }
+        };
+      }
+
+      // Simulate successful payment
+      const bkashTransactionId = securityUtils.generateSecureTransactionRef();
+      
+      return {
+        success: true,
+        bkashTransactionId,
+        amount: formatTaka(amount),
+        mobileNumber: securityUtils.maskMobileNumber(paymentData.mobileNumber || ''),
+        processedAt: new Date().toISOString(),
+        bkashResponse: {
+          statusCode: '0000',
+          statusMessage: 'Successful',
+          transactionId: bkashTransactionId,
+          customerMsisdn: securityUtils.maskMobileNumber(paymentData.mobileNumber || ''),
+          amount: amount.toString(),
+          currency: 'BDT',
+          intent: 'sale'
+        }
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: 'Network error occurred during payment processing',
+        errorCode: 'NETWORK_ERROR',
+        attemptCount,
+        originalError: error.message
+      };
+    }
+  }
+
+  /**
+   * Simulate bKash payment outcomes for testing
+   */
+  static simulateBkashPaymentOutcome(paymentData, amount, attemptCount) {
+    // Test mobile numbers for different scenarios
+    const testScenarios = {
+      '01700000001': { shouldFail: true, reason: 'Insufficient balance', code: 'INSUFFICIENT_BALANCE', statusCode: '2001' },
+      '01700000002': { shouldFail: true, reason: 'Invalid PIN', code: 'INVALID_PIN', statusCode: '2002' },
+      '01700000003': { shouldFail: true, reason: 'Account blocked', code: 'ACCOUNT_BLOCKED', statusCode: '2003' },
+      '01700000004': { shouldFail: true, reason: 'Transaction limit exceeded', code: 'TRANSACTION_LIMIT_EXCEEDED', statusCode: '2004' },
+      '01700000005': { shouldFail: true, reason: 'Service unavailable', code: 'SERVICE_UNAVAILABLE', statusCode: '2005' }
+    };
+
+    // Check for test scenarios
+    if (testScenarios[paymentData.mobileNumber]) {
+      return testScenarios[paymentData.mobileNumber];
     }
 
-    const validPaymentMethods = ['credit_card', 'debit_card', 'bank_transfer', 'digital_wallet'];
-    if (paymentData.paymentMethod && !validPaymentMethods.includes(paymentData.paymentMethod)) {
-      errors.push('Invalid payment method');
+    // Simulate network errors on first attempt (5% chance)
+    if (attemptCount === 1 && Math.random() < 0.05) {
+      return {
+        shouldFail: true,
+        reason: 'Network timeout',
+        code: 'TIMEOUT',
+        statusCode: '2006'
+      };
     }
 
-    // Credit/Debit card validation
-    if (['credit_card', 'debit_card'].includes(paymentData.paymentMethod)) {
-      if (!paymentData.cardNumber || paymentData.cardNumber.length < 13) {
-        errors.push('Valid card number is required');
-      }
-
-      if (!paymentData.expiryMonth || !paymentData.expiryYear) {
-        errors.push('Card expiry date is required');
-      }
-
-      if (!paymentData.cvv || paymentData.cvv.length < 3) {
-        errors.push('Valid CVV is required');
-      }
-
-      if (!paymentData.cardHolderName) {
-        errors.push('Card holder name is required');
-      }
+    // Simulate random failures (3% chance after first attempt)
+    if (attemptCount > 1 && Math.random() < 0.03) {
+      const randomFailures = [
+        { reason: 'Service temporarily unavailable', code: 'SERVICE_UNAVAILABLE', statusCode: '2005' },
+        { reason: 'Network error', code: 'NETWORK_ERROR', statusCode: '2006' }
+      ];
+      
+      return {
+        shouldFail: true,
+        ...randomFailures[Math.floor(Math.random() * randomFailures.length)]
+      };
     }
 
-    // Bank transfer validation
-    if (paymentData.paymentMethod === 'bank_transfer') {
-      if (!paymentData.bankAccount || !paymentData.routingNumber) {
-        errors.push('Bank account details are required');
-      }
+    // Success case
+    return { shouldFail: false };
+  }
+
+  /**
+   * Generate bKash-style transaction ID
+   */
+  static generateBkashTransactionId() {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 6);
+    return `BK${timestamp}${random}`.toUpperCase();
+  }
+
+  /**
+   * Confirm bKash payment and update transaction
+   */
+  static confirmBkashPayment(transactionId, bkashTransactionId) {
+    const processedAt = new Date().toISOString();
+    const transaction = Transaction.updateStatus(transactionId, 'completed', processedAt);
+    
+    // Update payment data with bKash transaction ID
+    if (transaction) {
+      const paymentData = JSON.parse(transaction.paymentData || '{}');
+      paymentData.bkashTransactionId = bkashTransactionId;
+      paymentData.confirmedAt = processedAt;
+      
+      // Update transaction with bKash details
+      Transaction.updatePaymentData(transactionId, JSON.stringify(paymentData));
+    }
+    
+    return transaction;
+  }
+
+  /**
+   * Handle bKash payment failure with retry tracking
+   */
+  static handleBkashPaymentFailure(transactionId, errorReason, attemptCount) {
+    const transaction = Transaction.findById(transactionId);
+    if (transaction) {
+      // Update transaction status to failed
+      Transaction.updateStatus(transactionId, 'failed');
+      
+      // Update payment data with failure details
+      const paymentData = JSON.parse(transaction.paymentData || '{}');
+      paymentData.failureReason = errorReason;
+      paymentData.attemptCount = attemptCount;
+      paymentData.failedAt = new Date().toISOString();
+      
+      Transaction.updatePaymentData(transactionId, JSON.stringify(paymentData));
+      
+      // Log the failure with context
+      ErrorHandler.logError(new Error(errorReason), {
+        transactionId: transaction.transactionId,
+        bkashTransactionId: transaction.id,
+        attemptCount,
+        mobileNumber: paymentData.mobileNumber,
+        amount: formatTaka(transaction.amount)
+      });
+    }
+    
+    return transaction;
+  }
+
+  /**
+   * Send bKash-style confirmation notification
+   */
+  static async sendBkashConfirmationNotification(transactionId, userId, booking, paymentResult) {
+    try {
+      await NotificationService.sendBkashPaymentConfirmationNotification(
+        transactionId,
+        userId,
+        {
+          hospitalName: booking.hospitalName || 'Hospital',
+          resourceType: booking.resourceType,
+          amount: paymentResult.amount,
+          bkashTransactionId: paymentResult.bkashTransactionId,
+          mobileNumber: paymentResult.mobileNumber,
+          processedAt: paymentResult.processedAt
+        }
+      );
+    } catch (error) {
+      ErrorHandler.logError(error, { 
+        context: 'bkash_confirmation_notification',
+        transactionId,
+        userId 
+      });
+    }
+  }
+
+  /**
+   * Generate and send bKash-style receipt
+   */
+  static async generateAndSendBkashReceipt(transactionId, userId) {
+    try {
+      const receipt = this.generateBkashPaymentReceipt(transactionId);
+      await NotificationService.sendBkashReceiptNotification(userId, receipt);
+    } catch (error) {
+      ErrorHandler.logError(error, { 
+        context: 'bkash_receipt_generation',
+        transactionId,
+        userId 
+      });
+    }
+  }
+
+  /**
+   * Generate bKash-style payment receipt
+   */
+  static generateBkashPaymentReceipt(transactionId) {
+    const transaction = Transaction.findById(transactionId);
+    if (!transaction) {
+      throw new Error('Transaction not found');
     }
 
-    // Digital wallet validation
-    if (paymentData.paymentMethod === 'digital_wallet') {
-      if (!paymentData.walletId || !paymentData.walletProvider) {
-        errors.push('Digital wallet details are required');
-      }
-    }
-
+    const booking = Booking.findById(transaction.bookingId);
+    const paymentData = JSON.parse(transaction.paymentData || '{}');
+    
     return {
-      isValid: errors.length === 0,
-      errors
+      receiptId: `BKASH_RCPT_${transaction.transactionId}`,
+      transactionId: transaction.transactionId,
+      bkashTransactionId: paymentData.bkashTransactionId,
+      bookingId: transaction.bookingId,
+      patientName: booking?.patientName,
+      hospitalName: transaction.hospitalName,
+      resourceType: booking?.resourceType,
+      scheduledDate: booking?.scheduledDate,
+      amount: formatTaka(transaction.amount),
+      serviceCharge: formatTaka(transaction.serviceCharge),
+      hospitalAmount: formatTaka(transaction.hospitalAmount),
+      paymentMethod: 'bKash',
+      mobileNumber: paymentData.mobileNumber,
+      paymentDate: transaction.processedAt,
+      status: transaction.status,
+      receiptDate: new Date().toISOString(),
+      bkashLogo: true,
+      receiptType: 'bkash_payment',
+      currency: 'BDT',
+      currencySymbol: '৳'
     };
   }
 

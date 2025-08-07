@@ -18,13 +18,13 @@ class UserService {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Insert user
+    // Insert user with default balance of 10,000 BDT
     const stmt = db.prepare(`
-      INSERT INTO users (email, password, name, phone, userType)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO users (email, password, name, phone, userType, balance)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
 
-    const result = stmt.run(email, hashedPassword, name, phone, userType);
+    const result = stmt.run(email, hashedPassword, name, phone, userType, 10000.00);
     const userId = result.lastInsertRowid;
 
     // If hospital authority, create hospital authority record
@@ -278,19 +278,19 @@ class UserService {
 
   // Create user (for testing purposes)
   static create(userData) {
-    const { email, password, name, phone, userType, hospital_id } = userData;
+    const { email, password, name, phone, userType, hospital_id, balance } = userData;
 
     // Hash password synchronously for testing
     const saltRounds = 10;
     const hashedPassword = bcrypt.hashSync(password, saltRounds);
 
-    // Insert user
+    // Insert user with default balance
     const stmt = db.prepare(`
-      INSERT INTO users (email, password, name, phone, userType, hospital_id)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO users (email, password, name, phone, userType, hospital_id, balance)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const result = stmt.run(email, hashedPassword, name, phone, userType, hospital_id);
+    const result = stmt.run(email, hashedPassword, name, phone, userType, hospital_id, balance || 10000.00);
     const userId = result.lastInsertRowid;
 
     // Return user without password

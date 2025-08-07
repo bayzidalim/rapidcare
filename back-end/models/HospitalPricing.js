@@ -1,267 +1,277 @@
 const db = require('../config/database');
 
+/**
+ * Hospital Pricing Model
+ * Manages pricing for hospital resources with service charges
+ */
 class HospitalPricing {
-  static create(pricingData) {
-    const stmt = db.prepare(`
-      INSERT INTO hospital_pricing (
-        hospitalId, resourceType, baseRate, hourlyRate, minimumCharge, maximumCharge,
-        currency, effectiveFrom, effectiveTo, createdBy
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  
+  /**
+   * Normalize resource type to handle different naming conventions
+   * @param {string} resourceType - Resource type to normalize
+   * @returns {string} Normalized resource type
+   */
+  static normalizeResourceType(resourceType) {
+    const typeMap = {
+      'bed': 'bed',
+      'beds': 'bed',
+      'icu': 'icu',
+      'operationTheatres': 'operationTheatres',
+      'operationTheaters': 'operationTheatres',
+      'operation_theatres': 'operationTheatres'
+    };
     
-    const result = stmt.run(
-      pricingData.hospitalId,
-      pricingData.resourceType,
-      pricingData.baseRate,
-      pricingData.hourlyRate || null,
-      pricingData.minimumCharge || null,
-      pricingData.maximumCharge || null,
-      pricingData.currency || 'USD',
-      pricingData.effectiveFrom || new Date().toISOString(),
-      pricingData.effectiveTo || null,
-      pricingData.createdBy
-    );
-    
-    return this.findById(result.lastInsertRowid);
+    return typeMap[resourceType] || resourceType;
   }
 
-  static findById(id) {
-    const stmt = db.prepare(`
-      SELECT hp.*, 
-             h.name as hospitalName,
-             u.name as createdByName
-      FROM hospital_pricing hp
-      LEFT JOIN hospitals h ON hp.hospitalId = h.id
-      LEFT JOIN users u ON hp.createdBy = u.id
-      WHERE hp.id = ?
-    `);
-    
-    return stmt.get(id);
-  }
-
-  static findByHospitalId(hospitalId) {
-    const stmt = db.prepare(`
-      SELECT hp.*, 
-             u.name as createdByName
-      FROM hospital_pricing hp
-      LEFT JOIN users u ON hp.createdBy = u.id
-      WHERE hp.hospitalId = ? AND hp.isActive = 1
-      ORDER BY hp.resourceType, hp.effectiveFrom DESC
-    `);
-    
-    return stmt.all(hospitalId);
-  }
-
-  static getCurrentPricing(hospitalId, resourceType = null) {
-    let query = `
-      SELECT hp.*, 
-             h.name as hospitalName,
-             u.name as createdByName
-      FROM hospital_pricing hp
-      LEFT JOIN hospitals h ON hp.hospitalId = h.id
-      LEFT JOIN users u ON hp.createdBy = u.id
-      WHERE hp.hospitalId = ? 
-        AND hp.isActive = 1 
-        AND hp.effectiveFrom <= CURRENT_TIMESTAMP
-        AND (hp.effectiveTo IS NULL OR hp.effectiveTo > CURRENT_TIMESTAMP)
-    `;
-    
-    const params = [hospitalId];
-    
-    if (resourceType) {
-      query += ' AND hp.resourceType = ?';
-      params.push(resourceType);
+  /**
+   * Set pricing for a hospital resource
+   * @param {number} hospitalId - Hospital ID
+   * @param {string} resourceType - Resource type (bed, icu, operationTheatres)
+   * @param {number} basePrice - Base price for the resource
+   * @param {number} serviceChargePercentage - Service charge percentage (default 30%)
+   * @returns {object} Pricing record
+   */
+  static setPricing(hospitalId, resourceType, basePrice, serviceChargePercentage = 30.00) {
+    // Validate inputs
+    if (!hospitalId || !resourceType || !basePrice) {
+      throw new Error('Hospital ID, resource type, and base price are required');
     }
     
-    query += ' ORDER BY hp.resourceType, hp.effectiveFrom DESC';
+    // Normalize resource type
+    const normalizedType = this.normalizeResourceType(resourceType);
+    const validResourceTypes = ['bed', 'icu', 'operationTheatres'];
+    if (!validResourceTypes.includes(normalizedType)) {
+      throw new Error(`Invalid resource type. Must be one of: ${validResourceTypes.join(', ')}`);
+    }
     
-    const stmt = db.prepare(query);
-    return resourceType ? stmt.get(...params) : stmt.all(...params);
-  }
-
-  static updatePricing(hospitalId, resourceType, pricingData, userId) {
-    // First, deactivate current pricing
-    const deactivateStmt = db.prepare(`
-      UPDATE hospital_pricing 
-      SET effectiveTo = CURRENT_TIMESTAMP, isActive = 0, updatedAt = CURRENT_TIMESTAMP
-      WHERE hospitalId = ? AND resourceType = ? AND isActive = 1
+    if (basePrice < 0) {
+      throw new Error('Base price must be non-negative');
+    }
+    
+    if (serviceChargePercentage < 0 || serviceChargePercentage > 100) {
+      throw new Error('Service charge percentage must be between 0 and 100');
+    }
+    
+    // Check if hospital exists
+    const hospitalExists = db.prepare('SELECT id FROM hospitals WHERE id = ?').get(hospitalId);
+    if (!hospitalExists) {
+      throw new Error('Hospital not found');
+    }
+    
+    // Insert or update pricing
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO simple_hospital_pricing 
+      (hospital_id, resource_type, base_price, service_charge_percentage, updated_at) 
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
-    deactivateStmt.run(hospitalId, resourceType);
-
-    // Then create new pricing record
-    return this.create({
-      hospitalId,
-      resourceType,
-      baseRate: pricingData.baseRate,
-      hourlyRate: pricingData.hourlyRate,
-      minimumCharge: pricingData.minimumCharge,
-      maximumCharge: pricingData.maximumCharge,
-      currency: pricingData.currency || 'USD',
-      effectiveFrom: pricingData.effectiveFrom || new Date().toISOString(),
-      effectiveTo: pricingData.effectiveTo,
-      createdBy: userId
-    });
+    
+    const result = stmt.run(hospitalId, normalizedType, basePrice, serviceChargePercentage);
+    
+    // Return the updated pricing record
+    return this.getPricing(hospitalId, normalizedType);
   }
-
-  static getPricingHistory(hospitalId, resourceType = null, limit = 10) {
-    let query = `
-      SELECT hp.*, 
-             u.name as createdByName
-      FROM hospital_pricing hp
-      LEFT JOIN users u ON hp.createdBy = u.id
-      WHERE hp.hospitalId = ?
-    `;
+  
+  /**
+   * Get pricing for a hospital resource with calculated total
+   * @param {number} hospitalId - Hospital ID
+   * @param {string} resourceType - Resource type
+   * @returns {object} Pricing information with calculations
+   */
+  static getPricing(hospitalId, resourceType) {
+    // Normalize resource type (handle both 'bed'/'beds', etc.)
+    const normalizedType = this.normalizeResourceType(resourceType);
     
-    const params = [hospitalId];
+    const stmt = db.prepare(`
+      SELECT * FROM simple_hospital_pricing 
+      WHERE hospital_id = ? AND resource_type = ?
+    `);
     
-    if (resourceType) {
-      query += ' AND hp.resourceType = ?';
-      params.push(resourceType);
-    }
-    
-    query += ' ORDER BY hp.effectiveFrom DESC';
-    
-    if (limit) {
-      query += ' LIMIT ?';
-      params.push(limit);
-    }
-    
-    const stmt = db.prepare(query);
-    return stmt.all(...params);
-  }
-
-  static calculateBookingAmount(hospitalId, resourceType, duration = 24) {
-    const pricing = this.getCurrentPricing(hospitalId, resourceType);
+    const pricing = stmt.get(hospitalId, normalizedType);
     
     if (!pricing) {
-      throw new Error(`No pricing found for ${resourceType} at hospital ${hospitalId}`);
+      // Return default pricing if not set (in Taka - BDT)
+      const defaultPrices = {
+        'bed': 120.00,
+        'icu': 600.00,
+        'operationTheatres': 1200.00
+      };
+      
+      const basePrice = defaultPrices[resourceType] || 100.00;
+      const serviceChargePercentage = 30.00;
+      
+      return {
+        hospital_id: hospitalId,
+        resource_type: resourceType,
+        base_price: basePrice,
+        service_charge_percentage: serviceChargePercentage,
+        service_charge_amount: (basePrice * serviceChargePercentage) / 100,
+        total_price: basePrice + ((basePrice * serviceChargePercentage) / 100),
+        is_default: true
+      };
     }
-
-    let amount = pricing.baseRate;
     
-    // Add hourly charges if applicable
-    if (pricing.hourlyRate && duration > 24) {
-      const extraHours = duration - 24;
-      amount += (extraHours * pricing.hourlyRate);
-    }
-    
-    // Apply minimum and maximum constraints
-    if (pricing.minimumCharge && amount < pricing.minimumCharge) {
-      amount = pricing.minimumCharge;
-    }
-    
-    if (pricing.maximumCharge && amount > pricing.maximumCharge) {
-      amount = pricing.maximumCharge;
-    }
+    // Calculate service charge and total
+    const serviceChargeAmount = (pricing.base_price * pricing.service_charge_percentage) / 100;
+    const totalPrice = pricing.base_price + serviceChargeAmount;
     
     return {
-      baseRate: pricing.baseRate,
-      hourlyRate: pricing.hourlyRate,
-      duration,
-      calculatedAmount: amount,
-      minimumCharge: pricing.minimumCharge,
-      maximumCharge: pricing.maximumCharge,
-      currency: pricing.currency
+      ...pricing,
+      service_charge_amount: parseFloat(serviceChargeAmount.toFixed(2)),
+      total_price: parseFloat(totalPrice.toFixed(2)),
+      is_default: false
     };
   }
-
+  
+  /**
+   * Get all pricing for a hospital
+   * @param {number} hospitalId - Hospital ID
+   * @returns {array} Array of pricing records
+   */
+  static getHospitalPricing(hospitalId) {
+    const resourceTypes = ['bed', 'icu', 'operationTheatres'];
+    return resourceTypes.map(resourceType => this.getPricing(hospitalId, resourceType));
+  }
+  
+  /**
+   * Calculate total cost for a booking
+   * @param {number} hospitalId - Hospital ID
+   * @param {string} resourceType - Resource type
+   * @param {number} duration - Duration in hours
+   * @returns {object} Cost breakdown
+   */
+  static calculateBookingCost(hospitalId, resourceType, duration = 24) {
+    const pricing = this.getPricing(hospitalId, resourceType);
+    
+    // Calculate daily rate (24 hours = 1 day)
+    const dailyRate = pricing.total_price;
+    const days = duration / 24;
+    const totalCost = dailyRate * days;
+    
+    const hospitalShare = pricing.base_price * days;
+    const serviceChargeShare = pricing.service_charge_amount * days;
+    
+    return {
+      base_price: pricing.base_price,
+      service_charge_percentage: pricing.service_charge_percentage,
+      service_charge_amount: pricing.service_charge_amount,
+      daily_rate: dailyRate,
+      duration_hours: duration,
+      duration_days: parseFloat(days.toFixed(2)),
+      hospital_share: parseFloat(hospitalShare.toFixed(2)),
+      service_charge_share: parseFloat(serviceChargeShare.toFixed(2)),
+      total_cost: parseFloat(totalCost.toFixed(2))
+    };
+  }
+  
+  /**
+   * Update service charge percentage for a hospital resource
+   * @param {number} hospitalId - Hospital ID
+   * @param {string} resourceType - Resource type
+   * @param {number} serviceChargePercentage - New service charge percentage
+   * @returns {object} Updated pricing record
+   */
+  static updateServiceCharge(hospitalId, resourceType, serviceChargePercentage) {
+    const currentPricing = this.getPricing(hospitalId, resourceType);
+    return this.setPricing(hospitalId, resourceType, currentPricing.base_price, serviceChargePercentage);
+  }
+  
+  /**
+   * Get pricing statistics for admin dashboard
+   * @returns {object} Pricing statistics
+   */
+  static getPricingStatistics() {
+    const stats = db.prepare(`
+      SELECT 
+        resource_type,
+        COUNT(*) as hospital_count,
+        AVG(base_price) as avg_base_price,
+        MIN(base_price) as min_base_price,
+        MAX(base_price) as max_base_price,
+        AVG(service_charge_percentage) as avg_service_charge
+      FROM simple_hospital_pricing 
+      GROUP BY resource_type
+    `).all();
+    
+    return stats.map(stat => ({
+      ...stat,
+      avg_base_price: parseFloat(stat.avg_base_price.toFixed(2)),
+      avg_service_charge: parseFloat(stat.avg_service_charge.toFixed(2))
+    }));
+  }
+  
+  /**
+   * Validate pricing data
+   * @param {object} pricingData - Pricing data to validate
+   * @returns {object} Validation result
+   */
   static validatePricingData(pricingData) {
     const errors = [];
     
-    if (!pricingData.baseRate || pricingData.baseRate <= 0) {
-      errors.push('Base rate must be a positive number');
+    if (!pricingData.hospitalId) {
+      errors.push('Hospital ID is required');
     }
     
-    if (pricingData.hourlyRate && pricingData.hourlyRate < 0) {
-      errors.push('Hourly rate cannot be negative');
+    if (!pricingData.resourceType) {
+      errors.push('Resource type is required');
+    } else {
+      const validTypes = ['bed', 'icu', 'operationTheatres'];
+      if (!validTypes.includes(pricingData.resourceType)) {
+        errors.push(`Resource type must be one of: ${validTypes.join(', ')}`);
+      }
     }
     
-    if (pricingData.minimumCharge && pricingData.minimumCharge < 0) {
-      errors.push('Minimum charge cannot be negative');
+    if (pricingData.basePrice === undefined || pricingData.basePrice === null) {
+      errors.push('Base price is required');
+    } else if (pricingData.basePrice < 0) {
+      errors.push('Base price must be non-negative');
     }
     
-    if (pricingData.maximumCharge && pricingData.maximumCharge < 0) {
-      errors.push('Maximum charge cannot be negative');
-    }
-    
-    if (pricingData.minimumCharge && pricingData.maximumCharge && 
-        pricingData.minimumCharge > pricingData.maximumCharge) {
-      errors.push('Minimum charge cannot be greater than maximum charge');
-    }
-    
-    if (!['beds', 'icu', 'operationTheatres'].includes(pricingData.resourceType)) {
-      errors.push('Invalid resource type');
+    if (pricingData.serviceChargePercentage !== undefined) {
+      if (pricingData.serviceChargePercentage < 0 || pricingData.serviceChargePercentage > 100) {
+        errors.push('Service charge percentage must be between 0 and 100');
+      }
     }
     
     return {
       isValid: errors.length === 0,
-      errors
+      errors: errors
     };
   }
-
-  static getResourceTypes() {
-    return ['beds', 'icu', 'operationTheatres'];
+  
+  /**
+   * Delete pricing for a hospital resource
+   * @param {number} hospitalId - Hospital ID
+   * @param {string} resourceType - Resource type
+   * @returns {boolean} Success status
+   */
+  static deletePricing(hospitalId, resourceType) {
+    const stmt = db.prepare(`
+      DELETE FROM simple_hospital_pricing 
+      WHERE hospital_id = ? AND resource_type = ?
+    `);
+    
+    const result = stmt.run(hospitalId, resourceType);
+    return result.changes > 0;
   }
-
-  static getPricingComparison(resourceType, city = null) {
-    let query = `
-      SELECT 
-        h.name as hospitalName,
-        h.city,
-        hp.baseRate,
-        hp.hourlyRate,
-        hp.minimumCharge,
-        hp.maximumCharge,
-        hp.currency
-      FROM hospital_pricing hp
-      JOIN hospitals h ON hp.hospitalId = h.id
-      WHERE hp.resourceType = ? 
-        AND hp.isActive = 1
-        AND hp.effectiveFrom <= CURRENT_TIMESTAMP
-        AND (hp.effectiveTo IS NULL OR hp.effectiveTo > CURRENT_TIMESTAMP)
-        AND h.isActive = 1
-    `;
+  
+  /**
+   * Get all hospitals with custom pricing
+   * @returns {array} Hospitals with pricing information
+   */
+  static getHospitalsWithPricing() {
+    const stmt = db.prepare(`
+      SELECT DISTINCT 
+        h.id, 
+        h.name, 
+        COUNT(p.id) as pricing_count
+      FROM hospitals h
+      LEFT JOIN simple_hospital_pricing p ON h.id = p.hospital_id
+      GROUP BY h.id, h.name
+      ORDER BY h.name
+    `);
     
-    const params = [resourceType];
-    
-    if (city) {
-      query += ' AND h.city = ?';
-      params.push(city);
-    }
-    
-    query += ' ORDER BY hp.baseRate ASC';
-    
-    const stmt = db.prepare(query);
-    return stmt.all(...params);
-  }
-
-  static delete(id) {
-    const stmt = db.prepare('UPDATE hospital_pricing SET isActive = 0 WHERE id = ?');
-    return stmt.run(id);
-  }
-
-  static count(options = {}) {
-    let query = 'SELECT COUNT(*) as count FROM hospital_pricing WHERE isActive = 1';
-    const params = [];
-    
-    if (options.where) {
-      const conditions = [];
-      Object.keys(options.where).forEach(key => {
-        const value = options.where[key];
-        if (typeof value === 'number' || typeof value === 'string' || value === null) {
-          conditions.push(`${key} = ?`);
-          params.push(value);
-        }
-      });
-      if (conditions.length > 0) {
-        query += ' AND ' + conditions.join(' AND ');
-      }
-    }
-    
-    const stmt = db.prepare(query);
-    const result = stmt.get(...params);
-    return result.count;
+    return stmt.all();
   }
 }
 

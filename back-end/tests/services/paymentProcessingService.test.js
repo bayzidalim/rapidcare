@@ -1,197 +1,352 @@
 const PaymentProcessingService = require('../../services/paymentProcessingService');
 const Transaction = require('../../models/Transaction');
 const Booking = require('../../models/Booking');
-const db = require('../../config/database');
+const ErrorHandler = require('../../utils/errorHandler');
 
-describe('PaymentProcessingService', () => {
+// Mock dependencies
+jest.mock('../../models/Transaction');
+jest.mock('../../models/Booking');
+jest.mock('../../config/database');
+jest.mock('../../services/notificationService');
+
+describe('PaymentProcessingService - Error Handling', () => {
   beforeEach(() => {
-    // Clean up test data
-    db.exec('DELETE FROM transactions WHERE transactionId LIKE "TEST_%"');
+    jest.clearAllMocks();
   });
 
-  afterAll(() => {
-    // Clean up test data
-    db.exec('DELETE FROM transactions WHERE transactionId LIKE "TEST_%"');
-  });
+  describe('processBookingPayment', () => {
+    test('should handle booking not found error', async () => {
+      Booking.findById.mockReturnValue(null);
 
-  describe('validatePaymentData', () => {
-    test('should validate correct credit card data', () => {
-      const validPaymentData = {
-        paymentMethod: 'credit_card',
-        cardNumber: '4111111111111111',
-        expiryMonth: '12',
-        expiryYear: '2025',
-        cvv: '123',
-        cardHolderName: 'John Doe'
-      };
-
-      const validation = PaymentProcessingService.validatePaymentData(validPaymentData);
-
-      expect(validation.isValid).toBe(true);
-      expect(validation.errors).toHaveLength(0);
-    });
-
-    test('should reject invalid payment data', () => {
-      const invalidPaymentData = {
-        paymentMethod: 'credit_card',
-        cardNumber: '123', // Too short
-        // Missing required fields
-      };
-
-      const validation = PaymentProcessingService.validatePaymentData(invalidPaymentData);
-
-      expect(validation.isValid).toBe(false);
-      expect(validation.errors.length).toBeGreaterThan(0);
-    });
-
-    test('should validate bank transfer data', () => {
-      const bankTransferData = {
-        paymentMethod: 'bank_transfer',
-        bankAccount: '1234567890',
-        routingNumber: '021000021'
-      };
-
-      const validation = PaymentProcessingService.validatePaymentData(bankTransferData);
-
-      expect(validation.isValid).toBe(true);
-      expect(validation.errors).toHaveLength(0);
-    });
-
-    test('should validate digital wallet data', () => {
-      const walletData = {
-        paymentMethod: 'digital_wallet',
-        walletId: 'user@example.com',
-        walletProvider: 'paypal'
-      };
-
-      const validation = PaymentProcessingService.validatePaymentData(walletData);
-
-      expect(validation.isValid).toBe(true);
-      expect(validation.errors).toHaveLength(0);
-    });
-  });
-
-  describe('generateTransactionId', () => {
-    test('should generate unique transaction IDs', () => {
-      const id1 = PaymentProcessingService.generateTransactionId();
-      const id2 = PaymentProcessingService.generateTransactionId();
-
-      expect(id1).toBeDefined();
-      expect(id2).toBeDefined();
-      expect(id1).not.toBe(id2);
-      expect(id1).toMatch(/^TXN_\d+_[A-Z0-9]+$/);
-    });
-  });
-
-  describe('processDummyPayment', () => {
-    test('should simulate successful payment', async () => {
-      const paymentData = {
-        paymentMethod: 'credit_card',
-        cardNumber: '4111111111111111',
-        expiryMonth: '12',
-        expiryYear: '2025',
-        cvv: '123',
-        cardHolderName: 'John Doe'
-      };
-
-      const result = await PaymentProcessingService.processDummyPayment(paymentData, 100.00);
-
-      expect(result.success).toBe(true);
-      expect(result.gatewayTransactionId).toBeDefined();
-      expect(result.gatewayResponse.code).toBe('00');
-    });
-
-    test('should simulate payment failure for test card', async () => {
-      const paymentData = {
-        paymentMethod: 'credit_card',
-        cardNumber: '4000000000000002', // Test failure card
-        expiryMonth: '12',
-        expiryYear: '2025',
-        cvv: '123',
-        cardHolderName: 'John Doe'
-      };
-
-      const result = await PaymentProcessingService.processDummyPayment(paymentData, 100.00);
+      const result = await PaymentProcessingService.processBookingPayment(
+        999,
+        { mobileNumber: '01712345678', pin: '12345' },
+        1
+      );
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Card declined');
-      expect(result.gatewayResponse.code).toBe('05');
-    });
-  });
-
-  describe('shouldSimulateFailure', () => {
-    test('should identify test failure cards', () => {
-      const paymentData = {
-        cardNumber: '4000000000000119' // Invalid card number test case
-      };
-
-      const result = PaymentProcessingService.shouldSimulateFailure(paymentData, 100.00);
-
-      expect(result.shouldFail).toBe(true);
-      expect(result.code).toBe('14');
-      expect(result.reason).toBe('Invalid card number');
+      expect(result.error.code).toBe('BK009'); // INVALID_TRANSACTION
+      expect(result.error.reason).toContain('Booking not found');
     });
 
-    test('should not fail for valid card numbers', () => {
-      const paymentData = {
-        cardNumber: '4111111111111111' // Valid test card
-      };
-
-      // Note: This test might occasionally fail due to random 5% failure rate
-      // In a real test environment, you'd want to mock the random function
-      const result = PaymentProcessingService.shouldSimulateFailure(paymentData, 100.00);
-      
-      // We can't guarantee this won't randomly fail, so we just check the structure
-      expect(result).toHaveProperty('shouldFail');
-      expect(typeof result.shouldFail).toBe('boolean');
-    });
-  });
-
-  describe('generatePaymentReceipt', () => {
-    test('should generate receipt for valid transaction', () => {
-      // This test would require a valid transaction in the database
-      // For now, we'll test the structure
-      const mockTransactionId = 1;
-      
-      try {
-        const receipt = PaymentProcessingService.generatePaymentReceipt(mockTransactionId);
-        
-        // If transaction exists, receipt should have required fields
-        expect(receipt).toHaveProperty('receiptId');
-        expect(receipt).toHaveProperty('transactionId');
-        expect(receipt).toHaveProperty('amount');
-        expect(receipt).toHaveProperty('receiptDate');
-      } catch (error) {
-        // If transaction doesn't exist, should throw appropriate error
-        expect(error.message).toBe('Transaction not found');
-      }
-    });
-  });
-
-  describe('payment method validation', () => {
-    test('should accept valid payment methods', () => {
-      const validMethods = ['credit_card', 'debit_card', 'bank_transfer', 'digital_wallet'];
-      
-      validMethods.forEach(method => {
-        const paymentData = { paymentMethod: method };
-        const validation = PaymentProcessingService.validatePaymentData(paymentData);
-        
-        // Should not have payment method error (may have other validation errors)
-        expect(validation.errors).not.toContain('Invalid payment method');
+    test('should handle duplicate payment error', async () => {
+      Booking.findById.mockReturnValue({
+        id: 1,
+        paymentStatus: 'paid',
+        paymentAmount: 1000,
+        hospitalId: 1,
+        transactionId: 'TXN123'
       });
+
+      const result = await PaymentProcessingService.processBookingPayment(
+        1,
+        { mobileNumber: '01712345678', pin: '12345' },
+        1
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('BK009'); // DUPLICATE_TRANSACTION
     });
 
-    test('should reject invalid payment methods', () => {
-      const invalidPaymentData = {
-        paymentMethod: 'invalid_method'
+    test('should handle cancelled booking error', async () => {
+      Booking.findById.mockReturnValue({
+        id: 1,
+        paymentStatus: 'pending',
+        status: 'cancelled',
+        paymentAmount: 1000,
+        hospitalId: 1
+      });
+
+      const result = await PaymentProcessingService.processBookingPayment(
+        1,
+        { mobileNumber: '01712345678', pin: '12345' },
+        1
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('BK009'); // INVALID_TRANSACTION
+      expect(result.error.reason).toContain('cancelled booking');
+    });
+
+    test('should handle invalid mobile number', async () => {
+      Booking.findById.mockReturnValue({
+        id: 1,
+        paymentStatus: 'pending',
+        status: 'confirmed',
+        paymentAmount: 1000,
+        hospitalId: 1
+      });
+
+      const result = await PaymentProcessingService.processBookingPayment(
+        1,
+        { mobileNumber: '123456789', pin: '12345' }, // Invalid mobile
+        1
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error.code).toBe('BK001');
+    });
+
+    test('should handle invalid PIN', async () => {
+      Booking.findById.mockReturnValue({
+        id: 1,
+        paymentStatus: 'pending',
+        status: 'confirmed',
+        paymentAmount: 1000,
+        hospitalId: 1
+      });
+
+      const result = await PaymentProcessingService.processBookingPayment(
+        1,
+        { mobileNumber: '01712345678', pin: '123' }, // Invalid PIN
+        1
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error.code).toBe('BK002');
+    });
+
+    test('should handle invalid amount', async () => {
+      Booking.findById.mockReturnValue({
+        id: 1,
+        paymentStatus: 'pending',
+        status: 'confirmed',
+        paymentAmount: 5, // Below minimum
+        hospitalId: 1
+      });
+
+      const result = await PaymentProcessingService.processBookingPayment(
+        1,
+        { mobileNumber: '01712345678', pin: '12345' },
+        1
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error.code).toBe('BK008');
+    });
+
+    test('should process successful payment', async () => {
+      const mockBooking = {
+        id: 1,
+        paymentStatus: 'pending',
+        status: 'confirmed',
+        paymentAmount: 1000,
+        hospitalId: 1,
+        hospitalName: 'Test Hospital',
+        resourceType: 'beds'
       };
 
-      const validation = PaymentProcessingService.validatePaymentData(invalidPaymentData);
+      const mockTransaction = {
+        id: 1,
+        transactionId: 'TXN123',
+        amount: 1000,
+        serviceCharge: 50,
+        hospitalAmount: 950,
+        status: 'completed'
+      };
 
-      expect(validation.isValid).toBe(false);
-      expect(validation.errors).toContain('Invalid payment method');
+      Booking.findById.mockReturnValue(mockBooking);
+      Transaction.create.mockReturnValue(mockTransaction);
+      Transaction.updateStatus.mockReturnValue(mockTransaction);
+      Transaction.updatePaymentData.mockReturnValue(true);
+      Booking.updatePaymentStatus.mockReturnValue(true);
+
+      const result = await PaymentProcessingService.processBookingPayment(
+        1,
+        { mobileNumber: '01712345678', pin: '12345' },
+        1
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.transaction).toBeDefined();
+      expect(result.message).toContain('successfully');
+    });
+  });
+
+  describe('processBkashPayment', () => {
+    test('should simulate insufficient balance error', async () => {
+      const result = await PaymentProcessingService.processBkashPayment(
+        { mobileNumber: '01700000001', pin: '12345' },
+        1000,
+        1
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('INSUFFICIENT_BALANCE');
+      expect(result.bkashResponse.statusCode).toBe('2001');
+    });
+
+    test('should simulate invalid PIN error', async () => {
+      const result = await PaymentProcessingService.processBkashPayment(
+        { mobileNumber: '01700000002', pin: '12345' },
+        1000,
+        1
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('INVALID_PIN');
+      expect(result.bkashResponse.statusCode).toBe('2002');
+    });
+
+    test('should simulate account blocked error', async () => {
+      const result = await PaymentProcessingService.processBkashPayment(
+        { mobileNumber: '01700000003', pin: '12345' },
+        1000,
+        1
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('ACCOUNT_BLOCKED');
+      expect(result.bkashResponse.statusCode).toBe('2003');
+    });
+
+    test('should simulate successful payment', async () => {
+      const result = await PaymentProcessingService.processBkashPayment(
+        { mobileNumber: '01712345678', pin: '12345' },
+        1000,
+        1
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.bkashTransactionId).toBeDefined();
+      expect(result.amount).toBe('৳1,000.00');
+      expect(result.bkashResponse.statusCode).toBe('0000');
+    });
+  });
+
+  describe('generateBkashTransactionId', () => {
+    test('should generate valid bKash transaction ID', () => {
+      const transactionId = PaymentProcessingService.generateBkashTransactionId();
+      
+      expect(transactionId).toMatch(/^BK\d+[A-Z0-9]+$/);
+      expect(transactionId.length).toBeGreaterThan(10);
+    });
+
+    test('should generate unique transaction IDs', () => {
+      const id1 = PaymentProcessingService.generateBkashTransactionId();
+      const id2 = PaymentProcessingService.generateBkashTransactionId();
+      
+      expect(id1).not.toBe(id2);
+    });
+  });
+
+  describe('confirmBkashPayment', () => {
+    test('should confirm payment and update transaction', () => {
+      const mockTransaction = {
+        id: 1,
+        transactionId: 'TXN123',
+        paymentData: '{"mobileNumber":"01712345678"}'
+      };
+
+      Transaction.updateStatus.mockReturnValue(mockTransaction);
+      Transaction.updatePaymentData.mockReturnValue(true);
+
+      const result = PaymentProcessingService.confirmBkashPayment(1, 'BK123456');
+
+      expect(Transaction.updateStatus).toHaveBeenCalledWith(1, 'completed', expect.any(String));
+      expect(Transaction.updatePaymentData).toHaveBeenCalled();
+      expect(result).toBe(mockTransaction);
+    });
+  });
+
+  describe('handleBkashPaymentFailure', () => {
+    test('should handle payment failure and update transaction', () => {
+      const mockTransaction = {
+        id: 1,
+        transactionId: 'TXN123',
+        paymentData: '{"mobileNumber":"01712345678"}',
+        amount: 1000
+      };
+
+      Transaction.findById.mockReturnValue(mockTransaction);
+      Transaction.updateStatus.mockReturnValue(mockTransaction);
+      Transaction.updatePaymentData.mockReturnValue(true);
+
+      const result = PaymentProcessingService.handleBkashPaymentFailure(
+        1,
+        'Insufficient balance',
+        2
+      );
+
+      expect(Transaction.updateStatus).toHaveBeenCalledWith(1, 'failed');
+      expect(Transaction.updatePaymentData).toHaveBeenCalled();
+      expect(result).toBe(mockTransaction);
+    });
+  });
+
+  describe('generateBkashPaymentReceipt', () => {
+    test('should generate bKash-style receipt', () => {
+      const mockTransaction = {
+        id: 1,
+        transactionId: 'TXN123',
+        bookingId: 1,
+        amount: 1000,
+        serviceCharge: 50,
+        hospitalAmount: 950,
+        status: 'completed',
+        processedAt: '2024-01-01T00:00:00Z',
+        paymentData: '{"bkashTransactionId":"BK123456","mobileNumber":"01712345678"}'
+      };
+
+      const mockBooking = {
+        patientName: 'John Doe',
+        resourceType: 'beds',
+        scheduledDate: '2024-01-02'
+      };
+
+      Transaction.findById.mockReturnValue(mockTransaction);
+      Booking.findById.mockReturnValue(mockBooking);
+
+      const receipt = PaymentProcessingService.generateBkashPaymentReceipt(1);
+
+      expect(receipt.receiptId).toContain('BKASH_RCPT_');
+      expect(receipt.transactionId).toBe('TXN123');
+      expect(receipt.bkashTransactionId).toBe('BK123456');
+      expect(receipt.amount).toBe('৳1,000.00');
+      expect(receipt.paymentMethod).toBe('bKash');
+      expect(receipt.bkashLogo).toBe(true);
+      expect(receipt.currency).toBe('BDT');
+      expect(receipt.currencySymbol).toBe('৳');
+    });
+
+    test('should throw error for non-existent transaction', () => {
+      Transaction.findById.mockReturnValue(null);
+
+      expect(() => {
+        PaymentProcessingService.generateBkashPaymentReceipt(999);
+      }).toThrow('Transaction not found');
+    });
+  });
+
+  describe('Error handling with retry logic', () => {
+    test('should provide retry information for retryable errors', () => {
+      const error = new Error('Network timeout');
+      const errorResponse = ErrorHandler.handleBkashPaymentError(error, 1);
+
+      expect(errorResponse.error.canRetry).toBe(true);
+      expect(errorResponse.error.retryAfter).toBeGreaterThan(0);
+      expect(errorResponse.error.nextRetryMessage).toContain('চেষ্টা');
+      expect(errorResponse.error.nextRetryMessageEn).toContain('Retry');
+    });
+
+    test('should not allow retry after max attempts', () => {
+      const error = new Error('Network timeout');
+      const errorResponse = ErrorHandler.handleBkashPaymentError(error, 3);
+
+      expect(errorResponse.error.canRetry).toBe(false);
+      expect(errorResponse.error.finalAttempt).toBe(true);
+    });
+
+    test('should not allow retry for non-retryable errors', () => {
+      const error = new Error('Account blocked');
+      error.message = 'blocked';
+      const errorResponse = ErrorHandler.handleBkashPaymentError(error, 1);
+
+      expect(errorResponse.error.canRetry).toBe(false);
+      expect(errorResponse.error.retryable).toBe(false);
     });
   });
 });
-
-module.exports = {};

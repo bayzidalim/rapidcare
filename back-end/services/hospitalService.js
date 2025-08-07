@@ -1,4 +1,7 @@
 const db = require('../config/database');
+const NotificationService = require('./notificationService');
+const AuditTrailService = require('./auditTrailService');
+const ValidationService = require('./validationService');
 
 class HospitalService {
   // Get all hospitals (only approved for public use)
@@ -62,14 +65,19 @@ class HospitalService {
   }
 
   // Get hospital by ID
-  static getById(id) {
+  static getById(id, includeUnapproved = false) {
+    let whereClause = 'WHERE h.id = ? AND h.isActive = 1';
+    if (!includeUnapproved) {
+      whereClause += " AND h.approval_status = 'approved'";
+    }
+
     const hospital = db.prepare(`
       SELECT 
         h.*,
         GROUP_CONCAT(DISTINCT hs.service) as services
       FROM hospitals h
       LEFT JOIN hospital_services hs ON h.id = hs.hospitalId
-      WHERE h.id = ? AND h.isActive = 1
+      ${whereClause}
       GROUP BY h.id
     `).get(id);
 
@@ -90,6 +98,11 @@ class HospitalService {
         email: hospital.email,
         emergency: hospital.emergency
       },
+      approvalStatus: hospital.approval_status,
+      approvedBy: hospital.approved_by,
+      approvedAt: hospital.approved_at,
+      rejectionReason: hospital.rejection_reason,
+      submittedAt: hospital.submitted_at,
       resources: this.getHospitalResources(hospital.id),
       surgeons: this.getHospitalSurgeons(hospital.id)
     };
@@ -203,25 +216,40 @@ class HospitalService {
 
   // Create new hospital
   static create(hospitalData) {
+    // Sanitize input data
+    const sanitizedData = ValidationService.sanitizeHospitalData(hospitalData);
+    
+    // Validate hospital data
+    const validation = ValidationService.validateHospitalData(sanitizedData);
+    if (!validation.isValid) {
+      throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    // Check for duplicate hospital
+    if (ValidationService.checkDuplicateHospital(sanitizedData.name, sanitizedData.address.city)) {
+      throw new Error('A hospital with this name already exists in this city');
+    }
+
     const stmt = db.prepare(`
       INSERT INTO hospitals (
         name, street, city, state, zipCode, country, 
-        phone, email, emergency, rating, isActive
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        phone, email, emergency, rating, isActive, approval_status, submitted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
 
     const result = stmt.run(
-      hospitalData.name,
-      hospitalData.address?.street,
-      hospitalData.address?.city,
-      hospitalData.address?.state,
-      hospitalData.address?.zipCode,
-      hospitalData.address?.country,
-      hospitalData.contact?.phone,
-      hospitalData.contact?.email,
-      hospitalData.contact?.emergency,
-      hospitalData.rating || 0,
-      hospitalData.isActive !== false ? 1 : 0
+      sanitizedData.name,
+      sanitizedData.address?.street,
+      sanitizedData.address?.city,
+      sanitizedData.address?.state,
+      sanitizedData.address?.zipCode,
+      sanitizedData.address?.country,
+      sanitizedData.contact?.phone,
+      sanitizedData.contact?.email,
+      sanitizedData.contact?.emergency,
+      sanitizedData.rating || 0,
+      sanitizedData.isActive !== false ? 1 : 0,
+      'pending' // Set approval status to pending by default
     );
 
     const hospitalId = result.lastInsertRowid;
@@ -274,7 +302,7 @@ class HospitalService {
       });
     }
 
-    return this.getById(hospitalId);
+    return this.getById(hospitalId, true);
   }
 
   // Update hospital resources
@@ -325,7 +353,7 @@ class HospitalService {
       });
     }
 
-    return this.getById(id);
+    return this.getById(id, true);
   }
 
   // Get hospital resources
@@ -465,7 +493,100 @@ class HospitalService {
       });
     }
 
-    return this.getById(hospitalId);
+    return this.getById(hospitalId, true);
+  }
+
+  // Resubmit hospital for approval (resets status to pending)
+  static resubmitHospital(hospitalId, hospitalData, authorityUserId) {
+    // Get original hospital data for audit
+    const originalHospital = this.getById(hospitalId, true);
+    if (!originalHospital) return null;
+
+    // Validate status transition
+    if (!ValidationService.validateStatusTransition(originalHospital.approvalStatus, 'pending', 'hospital-authority')) {
+      throw new Error('Hospital can only be resubmitted if it was rejected');
+    }
+
+    // Validate user access
+    if (!ValidationService.validateHospitalAccess(authorityUserId, hospitalId, 'update')) {
+      throw new Error('Access denied - you can only resubmit your own hospital');
+    }
+
+    // Sanitize and validate new data
+    const sanitizedData = ValidationService.sanitizeHospitalData(hospitalData);
+    const validation = ValidationService.validateHospitalData(sanitizedData);
+    if (!validation.isValid) {
+      throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    // Check for duplicate hospital (excluding current one)
+    if (ValidationService.checkDuplicateHospital(sanitizedData.name, sanitizedData.address.city, hospitalId)) {
+      throw new Error('A hospital with this name already exists in this city');
+    }
+
+    // Update hospital information and reset approval status
+    const stmt = db.prepare(`
+      UPDATE hospitals 
+      SET name = ?, description = ?, type = ?, street = ?, city = ?, state = ?, zipCode = ?, country = ?,
+          phone = ?, email = ?, emergency = ?, 
+          approval_status = 'pending',
+          approved_by = NULL,
+          approved_at = NULL,
+          rejection_reason = NULL,
+          submitted_at = CURRENT_TIMESTAMP,
+          updatedAt = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    stmt.run(
+      sanitizedData.name,
+      sanitizedData.description || '',
+      sanitizedData.type || '',
+      sanitizedData.address?.street,
+      sanitizedData.address?.city,
+      sanitizedData.address?.state,
+      sanitizedData.address?.zipCode,
+      sanitizedData.address?.country,
+      sanitizedData.contact?.phone,
+      sanitizedData.contact?.email,
+      sanitizedData.contact?.emergency,
+      hospitalId
+    );
+
+    // Update services if provided
+    if (sanitizedData.services && sanitizedData.services.length > 0) {
+      // Delete existing services
+      db.prepare('DELETE FROM hospital_services WHERE hospitalId = ?').run(hospitalId);
+      
+      // Insert new services
+      const serviceStmt = db.prepare(`
+        INSERT INTO hospital_services (hospitalId, service) VALUES (?, ?)
+      `);
+      
+      sanitizedData.services.forEach(service => {
+        serviceStmt.run(hospitalId, service);
+      });
+    }
+
+    // Notify admin users about resubmission
+    const adminUsers = db.prepare('SELECT id FROM users WHERE userType = ?').all('admin');
+    const adminIds = adminUsers.map(admin => admin.id);
+    
+    if (adminIds.length > 0) {
+      NotificationService.notifyHospitalResubmitted(hospitalId, adminIds);
+    }
+
+    // Log audit trail
+    AuditTrailService.logHospitalResubmission(hospitalId, authorityUserId, {
+      hospitalName: sanitizedData.name,
+      changes: {
+        name: { old: originalHospital.name, new: sanitizedData.name },
+        description: { old: originalHospital.description, new: sanitizedData.description },
+        services: { old: originalHospital.services, new: sanitizedData.services }
+      }
+    });
+
+    return this.getById(hospitalId, true);
   }
 
   // Delete hospital
@@ -577,6 +698,17 @@ class HospitalService {
 
   // Approve hospital
   static approveHospital(hospitalId, approvedBy) {
+    // Get hospital and authority info before update
+    const hospital = this.getById(hospitalId, true);
+    if (!hospital) return null;
+
+    // Validate status transition
+    if (!ValidationService.validateStatusTransition(hospital.approvalStatus, 'approved', 'admin')) {
+      throw new Error(`Invalid status transition from ${hospital.approvalStatus} to approved`);
+    }
+
+    const authorityUser = db.prepare('SELECT id FROM users WHERE hospital_id = ?').get(hospitalId);
+
     const stmt = db.prepare(`
       UPDATE hospitals 
       SET approval_status = 'approved',
@@ -588,11 +720,53 @@ class HospitalService {
     `);
     
     const result = stmt.run(approvedBy, hospitalId);
-    return result.changes > 0 ? this.getById(hospitalId) : null;
+    
+    if (result.changes > 0) {
+      // Create notification for hospital authority (simplified)
+      try {
+        if (authorityUser) {
+          NotificationService.notifyHospitalApproved(hospitalId, authorityUser.id);
+        }
+      } catch (notificationError) {
+        console.error('Notification error:', notificationError);
+        // Don't fail the approval if notification fails
+      }
+
+      // Log audit trail (simplified)
+      try {
+        AuditTrailService.logHospitalApproval(hospitalId, approvedBy, {
+          hospitalName: hospital.name,
+          notes: 'Hospital approved and activated'
+        });
+      } catch (auditError) {
+        console.error('Audit trail error:', auditError);
+        // Don't fail the approval if audit fails
+      }
+
+      return this.getById(hospitalId, true);
+    }
+    
+    return null;
   }
 
   // Reject hospital
   static rejectHospital(hospitalId, rejectedBy, reason) {
+    // Get hospital and authority info before update
+    const hospital = this.getById(hospitalId, true);
+    if (!hospital) return null;
+
+    // Validate status transition
+    if (!ValidationService.validateStatusTransition(hospital.approvalStatus, 'rejected', 'admin')) {
+      throw new Error(`Invalid status transition from ${hospital.approvalStatus} to rejected`);
+    }
+
+    // Validate rejection reason
+    if (!reason || reason.trim().length < 10) {
+      throw new Error('Rejection reason must be at least 10 characters long');
+    }
+
+    const authorityUser = db.prepare('SELECT id FROM users WHERE hospital_id = ?').get(hospitalId);
+
     const stmt = db.prepare(`
       UPDATE hospitals 
       SET approval_status = 'rejected',
@@ -604,7 +778,34 @@ class HospitalService {
     `);
     
     const result = stmt.run(rejectedBy, reason, hospitalId);
-    return result.changes > 0 ? this.getById(hospitalId) : null;
+    
+    if (result.changes > 0) {
+      // Create notification for hospital authority (simplified)
+      try {
+        if (authorityUser) {
+          NotificationService.notifyHospitalRejected(hospitalId, authorityUser.id, reason);
+        }
+      } catch (notificationError) {
+        console.error('Notification error:', notificationError);
+        // Don't fail the rejection if notification fails
+      }
+
+      // Log audit trail (simplified)
+      try {
+        AuditTrailService.logHospitalRejection(hospitalId, rejectedBy, {
+          hospitalName: hospital.name,
+          reason: reason,
+          notes: 'Hospital registration rejected'
+        });
+      } catch (auditError) {
+        console.error('Audit trail error:', auditError);
+        // Don't fail the rejection if audit fails
+      }
+
+      return this.getById(hospitalId, true);
+    }
+    
+    return null;
   }
 
   // Get approval statistics
@@ -636,6 +837,25 @@ class HospitalService {
 
   // Create hospital with approval status (for hospital authority registration)
   static createWithApproval(hospitalData, authorityUserId) {
+    // Check if user can add hospital
+    if (!ValidationService.canUserAddHospital(authorityUserId)) {
+      throw new Error('User cannot add hospital - already has a hospital or not authorized');
+    }
+
+    // Sanitize input data
+    const sanitizedData = ValidationService.sanitizeHospitalData(hospitalData);
+    
+    // Validate hospital data
+    const validation = ValidationService.validateHospitalData(sanitizedData);
+    if (!validation.isValid) {
+      throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    // Check for duplicate hospital
+    if (ValidationService.checkDuplicateHospital(sanitizedData.name, sanitizedData.address.city)) {
+      throw new Error('A hospital with this name already exists in this city');
+    }
+
     const stmt = db.prepare(`
       INSERT INTO hospitals (
         name, description, type, street, city, state, zipCode, country, 
@@ -645,20 +865,20 @@ class HospitalService {
     `);
 
     const result = stmt.run(
-      hospitalData.name,
-      hospitalData.description || '',
-      hospitalData.type || 'General',
-      hospitalData.address?.street,
-      hospitalData.address?.city,
-      hospitalData.address?.state,
-      hospitalData.address?.zipCode,
-      hospitalData.address?.country,
-      hospitalData.contact?.phone,
-      hospitalData.contact?.email,
-      hospitalData.contact?.emergency,
-      hospitalData.capacity?.totalBeds || 0,
-      hospitalData.capacity?.icuBeds || 0,
-      hospitalData.capacity?.operationTheaters || 0
+      sanitizedData.name,
+      sanitizedData.description || '',
+      sanitizedData.type || 'General',
+      sanitizedData.address?.street,
+      sanitizedData.address?.city,
+      sanitizedData.address?.state,
+      sanitizedData.address?.zipCode,
+      sanitizedData.address?.country,
+      sanitizedData.contact?.phone,
+      sanitizedData.contact?.email,
+      sanitizedData.contact?.emergency,
+      sanitizedData.capacity?.totalBeds || 0,
+      sanitizedData.capacity?.icuBeds || 0,
+      sanitizedData.capacity?.operationTheaters || 0
     );
 
     const hospitalId = result.lastInsertRowid;
@@ -682,7 +902,7 @@ class HospitalService {
       });
     }
 
-    return this.getById(hospitalId);
+    return this.getById(hospitalId, true);
   }
 
   // Check if user can add hospital
