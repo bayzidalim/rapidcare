@@ -147,6 +147,16 @@ After deploying the backend (see below), return to Vercel:
 2. Verify all required environment variables are set
 3. Check Render logs for specific errors
 
+#### better-sqlite3 Build Errors (Node.js/Python Issues)
+**Cause**: `better-sqlite3` requires Python and build tools to compile native binaries
+**Solutions**:
+1. **Automatic**: The app will fallback to `sqlite3` if `better-sqlite3` fails
+2. **Manual Fix**: In Render dashboard, try these environment variables:
+   ```
+   PYTHON=/usr/bin/python3
+   ```
+3. **Alternative**: Use the provided Dockerfile which includes Python
+
 #### Database Issues
 **Solution**:
 1. Ensure SQLite database is created on startup

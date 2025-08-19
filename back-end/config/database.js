@@ -35,37 +35,109 @@ const createDatabaseConnection = (retries = 3) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       console.log(`🔄 Attempting database connection (attempt ${attempt}/${retries})`);
-      
-      const db = new Database(dbPath, {
-        verbose: process.env.NODE_ENV === 'development' ? console.log : null,
-        fileMustExist: false
-      });
+      console.log(`📦 Using ${useBetterSqlite3 ? 'better-sqlite3' : 'sqlite3'} driver`);
 
-      // Configure database for production
-      db.pragma('journal_mode = WAL');
-      db.pragma('foreign_keys = ON');
-      db.pragma('synchronous = NORMAL');
-      db.pragma('cache_size = 1000');
-      db.pragma('temp_store = memory');
-      
-      // Test connection
-      db.prepare('SELECT 1').get();
-      
+      let db;
+
+      if (useBetterSqlite3) {
+        // better-sqlite3 (synchronous)
+        db = new Database(dbPath, {
+          verbose: process.env.NODE_ENV === 'development' ? console.log : null,
+          fileMustExist: false
+        });
+
+        // Configure database for production
+        db.pragma('journal_mode = WAL');
+        db.pragma('foreign_keys = ON');
+        db.pragma('synchronous = NORMAL');
+        db.pragma('cache_size = 1000');
+        db.pragma('temp_store = memory');
+
+        // Test connection
+        db.prepare('SELECT 1').get();
+
+        // Add compatibility methods for sqlite3
+        db.useBetterSqlite3 = true;
+      } else {
+        // sqlite3 (asynchronous) - create synchronous wrapper
+        const sqlite3 = require('sqlite3').verbose();
+        const dbInstance = new sqlite3.Database(dbPath);
+
+        // Create synchronous wrapper
+        db = {
+          useBetterSqlite3: false,
+          _db: dbInstance,
+          prepare: (sql) => ({
+            get: (params) => {
+              return new Promise((resolve, reject) => {
+                dbInstance.get(sql, params || [], (err, row) => {
+                  if (err) reject(err);
+                  else resolve(row);
+                });
+              });
+            },
+            all: (params) => {
+              return new Promise((resolve, reject) => {
+                dbInstance.all(sql, params || [], (err, rows) => {
+                  if (err) reject(err);
+                  else resolve(rows);
+                });
+              });
+            },
+            run: (params) => {
+              return new Promise((resolve, reject) => {
+                dbInstance.run(sql, params || [], function (err) {
+                  if (err) reject(err);
+                  else resolve({ lastID: this.lastID, changes: this.changes });
+                });
+              });
+            }
+          }),
+          exec: (sql) => {
+            return new Promise((resolve, reject) => {
+              dbInstance.exec(sql, (err) => {
+                if (err) reject(err);
+                else resolve();
+              });
+            });
+          },
+          pragma: (pragma) => {
+            return new Promise((resolve, reject) => {
+              dbInstance.get(`PRAGMA ${pragma}`, (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+              });
+            });
+          },
+          close: () => {
+            dbInstance.close();
+          }
+        };
+
+        // Test connection
+        await new Promise((resolve, reject) => {
+          dbInstance.get('SELECT 1', (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          });
+        });
+      }
+
       console.log(`✅ Database connected successfully: ${dbPath}`);
       return db;
-      
+
     } catch (error) {
       console.error(`❌ Database connection attempt ${attempt} failed:`, error.message);
-      
+
       if (attempt === retries) {
         console.error('💥 All database connection attempts failed');
         throw new Error(`Failed to connect to database after ${retries} attempts: ${error.message}`);
       }
-      
+
       // Wait before retry (exponential backoff)
       const delay = Math.pow(2, attempt) * 1000;
       console.log(`⏳ Waiting ${delay}ms before retry...`);
-      
+
       // Synchronous delay for simplicity
       const start = Date.now();
       while (Date.now() - start < delay) {
@@ -79,7 +151,7 @@ const createDatabaseConnection = (retries = 3) => {
 const db = createDatabaseConnection();
 
 // Add connection monitoring
-db.on = db.on || function() {}; // Fallback for older versions
+db.on = db.on || function () { }; // Fallback for older versions
 
 // Graceful shutdown handler
 process.on('SIGINT', () => {
@@ -492,7 +564,7 @@ const initDatabase = () => {
       CREATE INDEX IF NOT EXISTS idx_resource_audit_log_hospital_id ON resource_audit_log(hospitalId);
       CREATE INDEX IF NOT EXISTS idx_resource_audit_log_booking_id ON resource_audit_log(bookingId);
     `);
-    
+
     // Create bookingReference index
     db.exec(`CREATE INDEX IF NOT EXISTS idx_bookings_reference ON bookings(bookingReference);`);
   } catch (error) {
@@ -507,10 +579,10 @@ const checkDatabaseHealth = () => {
   try {
     // Test basic connectivity
     const result = db.prepare('SELECT 1 as test').get();
-    
+
     // Check integrity
     const integrity = db.pragma('integrity_check');
-    
+
     // Get database info
     const info = {
       connected: !!result,
@@ -520,7 +592,7 @@ const checkDatabaseHealth = () => {
       mode: db.pragma('journal_mode', { simple: true }),
       foreign_keys: db.pragma('foreign_keys', { simple: true })
     };
-    
+
     return info;
   } catch (error) {
     return {
@@ -538,12 +610,12 @@ const createBackup = (backupPath) => {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       backupPath = path.join(path.dirname(dbPath), `database-backup-${timestamp}.sqlite`);
     }
-    
+
     console.log(`🔄 Creating database backup: ${backupPath}`);
-    
+
     // Use SQLite backup API
     const backup = db.backup(backupPath);
-    
+
     console.log(`✅ Database backup created: ${backupPath}`);
     return backupPath;
   } catch (error) {
@@ -555,7 +627,7 @@ const createBackup = (backupPath) => {
 // Initialize database on module load
 try {
   initDatabase();
-  
+
   // Log database status
   const health = checkDatabaseHealth();
   if (health.connected && health.integrity) {
@@ -563,7 +635,7 @@ try {
   } else {
     console.warn('⚠️  Database initialized but health check failed:', health);
   }
-  
+
   // Create backup in production on startup
   if (process.env.NODE_ENV === 'production' && process.env.CREATE_STARTUP_BACKUP === 'true') {
     try {
@@ -572,7 +644,7 @@ try {
       console.warn('⚠️  Startup backup failed:', error.message);
     }
   }
-  
+
 } catch (error) {
   console.error('💥 Database initialization failed:', error.message);
   throw error;
