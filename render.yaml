@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     rootDir: back-end
-    buildCommand: npm install
+    buildCommand: npm install && npm run migrate # This is the corrected line
     startCommand: npm start
     healthCheckPath: /api/health
     env: node

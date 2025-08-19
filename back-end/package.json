@@ -20,8 +20,7 @@
     "test:consistency": "mocha tests/consistency/*.test.js --timeout 30000",
     "test:comprehensive": "mocha tests/comprehensive/*.test.js --timeout 45000",
     "test:financial": "npm run test:e2e && npm run test:integration && npm run test:performance && npm run test:consistency && npm run test:comprehensive",
-    "lint": "echo 'Linting completed'",
-    "postinstall": "npm run migrate"
+    "lint": "echo 'Linting completed'"
   },
   "keywords": [
     "rapidcare",
@@ -38,7 +37,6 @@
   "dependencies": {
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.2",
-
     "cors": "^2.8.5",
     "dotenv": "^17.0.1",
     "express": "^5.1.0",
