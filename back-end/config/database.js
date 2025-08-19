@@ -31,7 +31,7 @@ if (!fs.existsSync(dbDir)) {
 }
 
 // Database connection with retry logic
-const createDatabaseConnection = (retries = 3) => {
+const createDatabaseConnection = async (retries = 3) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       console.log(`🔄 Attempting database connection (attempt ${attempt}/${retries})`);
