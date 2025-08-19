@@ -110,7 +110,7 @@ const nextConfig: NextConfig = {
   // Webpack configuration for production
   webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
     // Production optimizations
-    if (!dev) {
+    if (!dev && !isServer) {
       config.optimization.splitChunks = {
         chunks: 'all',
         cacheGroups: {
@@ -123,17 +123,6 @@ const nextConfig: NextConfig = {
       };
     }
 
-    // Bundle analyzer (only in development)
-    if (dev && process.env.ANALYZE === 'true') {
-      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
-      config.plugins.push(
-        new BundleAnalyzerPlugin({
-          analyzerMode: 'server',
-          openAnalyzer: true,
-        })
-      );
-    }
-
     return config;
   },
 
@@ -141,8 +130,6 @@ const nextConfig: NextConfig = {
   experimental: {
     // Enable if using Docker or serverless
     outputFileTracingRoot: undefined,
-    // Optimize CSS
-    optimizeCss: true,
     // Enable if needed for large applications
     // largePageDataBytes: 128 * 1000, // 128KB
   },

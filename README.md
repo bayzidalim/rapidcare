@@ -313,10 +313,11 @@ The application uses SQLite with the following main tables:
 2. **Configure Vercel Project**
    - Go to [Vercel Dashboard](https://vercel.com/dashboard)
    - Click "New Project" and import your repository
-   - Set **Root Directory** to `front-end`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `.next`
-   - **Install Command**: `npm install`
+   - Vercel will automatically detect the configuration from `vercel.json`
+   - **Framework**: Next.js (auto-detected)
+   - **Root Directory**: `front-end` (configured in vercel.json)
+   - **Build Command**: `cd front-end && npm run build` (configured in vercel.json)
+   - **Output Directory**: `front-end/.next` (configured in vercel.json)
 
 3. **Environment Variables in Vercel**
    ```
