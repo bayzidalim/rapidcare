@@ -1,4 +1,14 @@
-const Database = require('better-sqlite3');
+// Try better-sqlite3 first, fallback to sqlite3
+let Database;
+let useBetterSqlite3 = true;
+
+try {
+  Database = require('better-sqlite3');
+} catch (error) {
+  console.warn('⚠️  better-sqlite3 not available, falling back to sqlite3');
+  Database = require('sqlite3').Database;
+  useBetterSqlite3 = false;
+}
 const path = require('path');
 const fs = require('fs');
 

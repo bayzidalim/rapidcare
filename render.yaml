@@ -7,6 +7,8 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
+    env: node
+    nodeVersion: "18"
     envVars:
       - key: NODE_ENV
         value: production

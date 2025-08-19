@@ -1,5 +1,10 @@
+# Use Node.js 18 Alpine image
 FROM node:18-alpine
 
+# Install Python and build tools for native dependencies
+RUN apk add --no-cache python3 make g++
+
+# Set working directory
 WORKDIR /app
 
 # Copy package files
@@ -11,15 +16,15 @@ RUN npm ci --only=production
 # Copy source code
 COPY . .
 
-# Create database directory
-RUN mkdir -p /app/data
+# Create necessary directories
+RUN mkdir -p logs uploads
 
 # Expose port
-EXPOSE 5000
+EXPOSE 10000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:5000/health || exit 1
+  CMD node -e "require('http').get('http://localhost:10000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
 # Start the application
 CMD ["npm", "start"]
