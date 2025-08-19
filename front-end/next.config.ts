@@ -128,8 +128,6 @@ const nextConfig: NextConfig = {
 
   // Experimental features
   experimental: {
-    // Enable if using Docker or serverless
-    outputFileTracingRoot: undefined,
     // Enable if needed for large applications
     // largePageDataBytes: 128 * 1000, // 128KB
   },
