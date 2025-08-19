@@ -1,14 +1,96 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
-// Create database file in the project root
-const dbPath = path.join(__dirname, '..', 'database.sqlite');
+// Database configuration
+const getDatabasePath = () => {
+  // Use environment variable if provided, otherwise default path
+  if (process.env.DATABASE_URL && !process.env.DATABASE_URL.startsWith('postgresql://')) {
+    return process.env.DATABASE_URL;
+  }
+  return path.join(__dirname, '..', 'database.sqlite');
+};
 
-// Initialize database
-const db = new Database(dbPath);
+const dbPath = getDatabasePath();
 
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
+// Ensure database directory exists
+const dbDir = path.dirname(dbPath);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+  console.log(`📁 Created database directory: ${dbDir}`);
+}
+
+// Database connection with retry logic
+const createDatabaseConnection = (retries = 3) => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`🔄 Attempting database connection (attempt ${attempt}/${retries})`);
+      
+      const db = new Database(dbPath, {
+        verbose: process.env.NODE_ENV === 'development' ? console.log : null,
+        fileMustExist: false
+      });
+
+      // Configure database for production
+      db.pragma('journal_mode = WAL');
+      db.pragma('foreign_keys = ON');
+      db.pragma('synchronous = NORMAL');
+      db.pragma('cache_size = 1000');
+      db.pragma('temp_store = memory');
+      
+      // Test connection
+      db.prepare('SELECT 1').get();
+      
+      console.log(`✅ Database connected successfully: ${dbPath}`);
+      return db;
+      
+    } catch (error) {
+      console.error(`❌ Database connection attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === retries) {
+        console.error('💥 All database connection attempts failed');
+        throw new Error(`Failed to connect to database after ${retries} attempts: ${error.message}`);
+      }
+      
+      // Wait before retry (exponential backoff)
+      const delay = Math.pow(2, attempt) * 1000;
+      console.log(`⏳ Waiting ${delay}ms before retry...`);
+      
+      // Synchronous delay for simplicity
+      const start = Date.now();
+      while (Date.now() - start < delay) {
+        // Busy wait
+      }
+    }
+  }
+};
+
+// Initialize database connection
+const db = createDatabaseConnection();
+
+// Add connection monitoring
+db.on = db.on || function() {}; // Fallback for older versions
+
+// Graceful shutdown handler
+process.on('SIGINT', () => {
+  console.log('🔄 Closing database connection...');
+  try {
+    db.close();
+    console.log('✅ Database connection closed');
+  } catch (error) {
+    console.error('❌ Error closing database:', error.message);
+  }
+});
+
+process.on('SIGTERM', () => {
+  console.log('🔄 Closing database connection...');
+  try {
+    db.close();
+    console.log('✅ Database connection closed');
+  } catch (error) {
+    console.error('❌ Error closing database:', error.message);
+  }
+});
 
 // Create tables if they don't exist
 const initDatabase = () => {
@@ -410,9 +492,89 @@ const initDatabase = () => {
   console.log('Database tables and indexes created successfully');
 };
 
+// Database health check function
+const checkDatabaseHealth = () => {
+  try {
+    // Test basic connectivity
+    const result = db.prepare('SELECT 1 as test').get();
+    
+    // Check integrity
+    const integrity = db.pragma('integrity_check');
+    
+    // Get database info
+    const info = {
+      connected: !!result,
+      integrity: integrity[0]?.integrity_check === 'ok',
+      path: dbPath,
+      size: fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0,
+      mode: db.pragma('journal_mode', { simple: true }),
+      foreign_keys: db.pragma('foreign_keys', { simple: true })
+    };
+    
+    return info;
+  } catch (error) {
+    return {
+      connected: false,
+      error: error.message,
+      path: dbPath
+    };
+  }
+};
+
+// Database backup function (for production)
+const createBackup = (backupPath) => {
+  try {
+    if (!backupPath) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      backupPath = path.join(path.dirname(dbPath), `database-backup-${timestamp}.sqlite`);
+    }
+    
+    console.log(`🔄 Creating database backup: ${backupPath}`);
+    
+    // Use SQLite backup API
+    const backup = db.backup(backupPath);
+    
+    console.log(`✅ Database backup created: ${backupPath}`);
+    return backupPath;
+  } catch (error) {
+    console.error('❌ Database backup failed:', error.message);
+    throw error;
+  }
+};
+
 // Initialize database on module load
-initDatabase();
+try {
+  initDatabase();
+  
+  // Log database status
+  const health = checkDatabaseHealth();
+  if (health.connected && health.integrity) {
+    console.log('✅ Database initialized and healthy');
+  } else {
+    console.warn('⚠️  Database initialized but health check failed:', health);
+  }
+  
+  // Create backup in production on startup
+  if (process.env.NODE_ENV === 'production' && process.env.CREATE_STARTUP_BACKUP === 'true') {
+    try {
+      createBackup();
+    } catch (error) {
+      console.warn('⚠️  Startup backup failed:', error.message);
+    }
+  }
+  
+} catch (error) {
+  console.error('💥 Database initialization failed:', error.message);
+  throw error;
+}
 
-// The bookingReference column is now part of the main table schema above
+// Export database and utility functions
+module.exports = {
+  db,
+  checkDatabaseHealth,
+  createBackup,
+  dbPath
+};
 
-module.exports = db; 
+// For backward compatibility, also export db as default
+module.exports.default = db; 

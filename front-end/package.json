@@ -5,12 +5,22 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npm run build:verify",
+    "build:production": "NODE_ENV=production next build",
+    "build:analyze": "ANALYZE=true next build",
+    "build:verify": "node scripts/build-verify.js",
     "start": "next start",
+    "start:production": "NODE_ENV=production next start",
     "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "type-check": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --coverage --watchAll=false",
+    "clean": "rm -rf .next out",
+    "export": "next export",
+    "health-check": "node scripts/health-check.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",

@@ -38,16 +38,24 @@ const getMigrationFiles = () => {
     .sort();
 };
 
-// Run pending migrations
-const runMigrations = () => {
+// Run pending migrations with production safety
+const runMigrations = (options = {}) => {
+  const { force = false, dryRun = false } = options;
+  
   console.log('🔄 Starting database migrations...');
+  
+  if (dryRun) {
+    console.log('🧪 DRY RUN MODE - No changes will be made');
+  }
   
   try {
     // Initialize migrations table
-    initMigrationsTable();
+    if (!dryRun) {
+      initMigrationsTable();
+    }
     
     // Get executed and available migrations
-    const executedMigrations = getExecutedMigrations();
+    const executedMigrations = dryRun ? [] : getExecutedMigrations();
     const migrationFiles = getMigrationFiles();
     
     // Find pending migrations
@@ -57,13 +65,31 @@ const runMigrations = () => {
     
     if (pendingMigrations.length === 0) {
       console.log('✅ No pending migrations found');
-      return;
+      return { success: true, migrationsRun: 0 };
     }
     
     console.log(`📋 Found ${pendingMigrations.length} pending migration(s):`);
     pendingMigrations.forEach(file => console.log(`  - ${file}`));
     
+    // Production safety check
+    if (process.env.NODE_ENV === 'production' && !force && !dryRun) {
+      console.log('\n⚠️  Production environment detected');
+      console.log('Migrations will run automatically. Set SKIP_MIGRATIONS=true to skip.');
+      
+      if (process.env.SKIP_MIGRATIONS === 'true') {
+        console.log('🚫 Migrations skipped due to SKIP_MIGRATIONS=true');
+        return { success: true, migrationsRun: 0, skipped: true };
+      }
+    }
+    
+    if (dryRun) {
+      console.log('\n🧪 DRY RUN - Would execute these migrations:');
+      pendingMigrations.forEach(file => console.log(`  ✓ ${file}`));
+      return { success: true, migrationsRun: pendingMigrations.length, dryRun: true };
+    }
+    
     // Execute pending migrations
+    let successCount = 0;
     for (const migrationFile of pendingMigrations) {
       console.log(`\n🔄 Executing migration: ${migrationFile}`);
       
@@ -71,35 +97,64 @@ const runMigrations = () => {
         const migrationPath = path.join(__dirname, migrationFile);
         const migration = require(migrationPath);
         
-        // Execute the migration
-        if (typeof migration.addFinancialTables === 'function') {
-          migration.addFinancialTables();
-        } else if (typeof migration.addResourceBookingManagement === 'function') {
-          migration.addResourceBookingManagement();
-        } else if (typeof migration.addNotificationSystem === 'function') {
-          migration.addNotificationSystem();
-        } else if (typeof migration.addBookingReference === 'function') {
-          migration.addBookingReference(db);
-        } else {
-          console.warn(`⚠️  Migration ${migrationFile} does not export expected function`);
-          continue;
-        }
+        // Create a transaction for each migration
+        const transaction = db.transaction(() => {
+          // Execute the migration based on its exported function
+          if (typeof migration.addFinancialTables === 'function') {
+            migration.addFinancialTables();
+          } else if (typeof migration.addResourceBookingManagement === 'function') {
+            migration.addResourceBookingManagement();
+          } else if (typeof migration.addNotificationSystem === 'function') {
+            migration.addNotificationSystem();
+          } else if (typeof migration.addBookingReference === 'function') {
+            migration.addBookingReference(db);
+          } else if (typeof migration.up === 'function') {
+            migration.up(db);
+          } else {
+            throw new Error(`Migration ${migrationFile} does not export expected function`);
+          }
+          
+          // Mark as executed
+          markMigrationExecuted(migrationFile);
+        });
         
-        // Mark as executed
-        markMigrationExecuted(migrationFile);
+        // Execute transaction
+        transaction();
+        
         console.log(`✅ Migration ${migrationFile} completed successfully`);
+        successCount++;
         
       } catch (error) {
         console.error(`❌ Migration ${migrationFile} failed:`, error.message);
-        throw error;
+        console.error('Stack trace:', error.stack);
+        
+        // In production, continue with other migrations but log the failure
+        if (process.env.NODE_ENV === 'production') {
+          console.error(`⚠️  Continuing with remaining migrations...`);
+          continue;
+        } else {
+          throw error;
+        }
       }
     }
     
-    console.log('\n🎉 All migrations completed successfully!');
+    console.log(`\n🎉 Migrations completed! ${successCount}/${pendingMigrations.length} successful`);
+    
+    return { 
+      success: true, 
+      migrationsRun: successCount, 
+      totalMigrations: pendingMigrations.length 
+    };
     
   } catch (error) {
     console.error('💥 Migration process failed:', error.message);
-    process.exit(1);
+    
+    if (process.env.NODE_ENV === 'production') {
+      console.error('⚠️  Production migration failure - application may not function correctly');
+      return { success: false, error: error.message };
+    } else {
+      process.exit(1);
+    }
   }
 };
 

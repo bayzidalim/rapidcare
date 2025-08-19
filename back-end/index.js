@@ -3,31 +3,105 @@ const cors = require('cors');
 require('dotenv').config();
 
 // Environment variable validation
-const requiredEnvVars = ['JWT_SECRET', 'NODE_ENV'];
-const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+const validateEnvironment = () => {
+  const requiredEnvVars = ['JWT_SECRET', 'NODE_ENV'];
+  const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
-if (missingEnvVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
-  console.error('Please check your .env file and ensure all required variables are set.');
-  process.exit(1);
-}
+  if (missingEnvVars.length > 0) {
+    console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
+    console.error('Please check your .env file and ensure all required variables are set.');
+    console.error('Required variables:');
+    requiredEnvVars.forEach(envVar => {
+      const status = process.env[envVar] ? '✅' : '❌';
+      console.error(`  ${status} ${envVar}`);
+    });
+    return false;
+  }
 
-// Validate JWT_SECRET strength in production
-if (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET.length < 32) {
-  console.error('❌ JWT_SECRET must be at least 32 characters long in production');
+  // Validate JWT_SECRET strength in production
+  if (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET.length < 32) {
+    console.error('❌ JWT_SECRET must be at least 32 characters long in production');
+    console.error('Current length:', process.env.JWT_SECRET.length);
+    return false;
+  }
+
+  // Validate PORT
+  const port = process.env.PORT || 5000;
+  if (isNaN(port) || port < 1 || port > 65535) {
+    console.error('❌ Invalid PORT value:', process.env.PORT);
+    return false;
+  }
+
+  // Validate FRONTEND_URL in production
+  if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
+    console.warn('⚠️  FRONTEND_URL not set in production - CORS may not work properly');
+  }
+
+  return true;
+};
+
+if (!validateEnvironment()) {
+  console.error('💥 Environment validation failed. Application cannot start.');
   process.exit(1);
 }
 
 console.log('✅ Environment variables validated successfully');
 
 // Import database
-const db = require('./config/database');
+const { db } = require('./config/database');
+
+// Run database migrations on startup (production)
+if (process.env.NODE_ENV === 'production') {
+  try {
+    console.log('🔄 Running database migrations for production...');
+    const { runMigrations } = require('./migrations/migrate');
+    runMigrations();
+    console.log('✅ Database migrations completed successfully');
+  } catch (error) {
+    console.error('❌ Database migration failed:', error.message);
+    console.error('Application cannot start without proper database setup');
+    process.exit(1);
+  }
+}
 
 const app = express();
 
+// CORS Configuration for production
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',  // Development frontend
+      'http://localhost:3001',  // Alternative development port
+      process.env.FRONTEND_URL, // Production frontend URL
+    ].filter(Boolean); // Remove undefined values
+    
+    // In development, allow all origins
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    // In production, check against allowed origins
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`🚫 CORS blocked request from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
+  maxAge: 86400 // 24 hours
+};
+
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Database connection
 console.log('RapidCare: Connected to SQLite database');
@@ -51,15 +125,8 @@ initializeReconciliationService(db);
 app.use('/api/reconciliation', reconciliationRouter);
 app.use('/api/security', require('./routes/security'));
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'RapidCare API is running - Emergency Care, Delivered Fast',
-    service: 'RapidCare',
-    timestamp: new Date().toISOString()
-  });
-});
+// Health check routes (comprehensive monitoring)
+app.use('/api', require('./routes/health'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

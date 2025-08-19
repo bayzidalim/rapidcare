@@ -149,84 +149,219 @@ const sampleHospitals = [
   }
 ];
 
-const seedDatabase = async () => {
+const seedDatabase = async (options = {}) => {
+  const { 
+    force = false, 
+    dryRun = false, 
+    skipUsers = false, 
+    skipHospitals = false 
+  } = options;
+  
   try {
-    console.log('Connected to SQLite database');
-
-    // Clear existing data (this will be handled by the service)
-    console.log('Cleared existing hospital data');
-
-    // Insert sample hospitals
-    const hospitals = [];
-    for (const hospitalData of sampleHospitals) {
-      const hospital = HospitalService.create(hospitalData);
-      hospitals.push(hospital);
+    console.log('🌱 Starting database seeding...');
+    
+    if (dryRun) {
+      console.log('🧪 DRY RUN MODE - No data will be inserted');
     }
-    console.log(`Inserted ${hospitals.length} hospitals`);
-
-    // Create sample users
-    const sampleUsers = [
-      {
-        email: 'user@example.com',
-        password: 'password123',
-        name: 'Abdul Karim',
-        phone: '+880-1711-000001',
-        userType: 'user'
-      },
-      {
-        email: 'hospital@example.com',
-        password: 'password123',
-        name: 'Dr. Nusrat Jahan',
-        phone: '+880-1711-000002',
-        userType: 'hospital-authority'
-      },
-      {
-        email: 'admin@example.com',
-        password: 'password123',
-        name: 'Shamim Ahmed',
-        phone: '+880-1711-000003',
-        userType: 'admin'
+    
+    // Production safety check
+    if (process.env.NODE_ENV === 'production' && !force && !dryRun) {
+      console.log('⚠️  Production environment detected');
+      
+      if (process.env.SEED_DATA !== 'true') {
+        console.log('🚫 Seeding skipped in production (set SEED_DATA=true to enable)');
+        return { success: true, seeded: false, reason: 'production_skip' };
       }
-    ];
+      
+      console.log('✅ SEED_DATA=true detected, proceeding with seeding');
+    }
+    
+    console.log('📊 Connected to SQLite database');
+    
+    let results = {
+      hospitals: { created: 0, existing: 0 },
+      users: { created: 0, existing: 0 },
+      assignments: 0
+    };
 
-    const users = [];
-    for (const userData of sampleUsers) {
-      try {
-        const user = await UserService.register(userData);
-        users.push(user);
-      } catch (error) {
-        if (error.message.includes('already exists')) {
-          // User already exists, get the existing user
-          const existingUser = UserService.getByEmail(userData.email);
-          if (existingUser) {
-            users.push(existingUser);
-            console.log(`User ${userData.email} already exists, using existing user`);
+    // Seed hospitals
+    if (!skipHospitals) {
+      console.log('\n🏥 Seeding hospitals...');
+      
+      if (dryRun) {
+        console.log(`🧪 Would create ${sampleHospitals.length} hospitals`);
+        results.hospitals.created = sampleHospitals.length;
+      } else {
+        const hospitals = [];
+        for (const hospitalData of sampleHospitals) {
+          try {
+            // Check if hospital already exists
+            const existingHospitals = HospitalService.getAll();
+            const exists = existingHospitals.find(h => h.name === hospitalData.name);
+            
+            if (exists) {
+              hospitals.push(exists);
+              results.hospitals.existing++;
+              console.log(`  ✓ Hospital "${hospitalData.name}" already exists`);
+            } else {
+              const hospital = HospitalService.create(hospitalData);
+              hospitals.push(hospital);
+              results.hospitals.created++;
+              console.log(`  ✅ Created hospital "${hospitalData.name}"`);
+            }
+          } catch (error) {
+            console.error(`  ❌ Failed to create hospital "${hospitalData.name}":`, error.message);
           }
-        } else {
-          throw error;
+        }
+        console.log(`📊 Hospitals: ${results.hospitals.created} created, ${results.hospitals.existing} existing`);
+      }
+    }
+
+    // Seed users
+    if (!skipUsers) {
+      console.log('\n👥 Seeding users...');
+      
+      const sampleUsers = [
+        {
+          email: 'demo@rapidcare.com',
+          password: 'demo123456',
+          name: 'Demo User',
+          phone: '+880-1711-000001',
+          userType: 'user'
+        },
+        {
+          email: 'hospital@rapidcare.com',
+          password: 'hospital123456',
+          name: 'Dr. Hospital Authority',
+          phone: '+880-1711-000002',
+          userType: 'hospital-authority'
+        },
+        {
+          email: 'admin@rapidcare.com',
+          password: 'admin123456',
+          name: 'System Administrator',
+          phone: '+880-1711-000003',
+          userType: 'admin'
+        }
+      ];
+      
+      if (dryRun) {
+        console.log(`🧪 Would create ${sampleUsers.length} users`);
+        results.users.created = sampleUsers.length;
+      } else {
+        const users = [];
+        for (const userData of sampleUsers) {
+          try {
+            const existingUser = UserService.getByEmail(userData.email);
+            
+            if (existingUser) {
+              users.push(existingUser);
+              results.users.existing++;
+              console.log(`  ✓ User "${userData.email}" already exists`);
+            } else {
+              const user = await UserService.register(userData);
+              users.push(user);
+              results.users.created++;
+              console.log(`  ✅ Created user "${userData.email}" (${userData.userType})`);
+            }
+          } catch (error) {
+            console.error(`  ❌ Failed to create user "${userData.email}":`, error.message);
+          }
+        }
+        console.log(`📊 Users: ${results.users.created} created, ${results.users.existing} existing`);
+        
+        // Assign hospitals to hospital authorities (only if we have both hospitals and users)
+        if (!skipHospitals && users.length > 1) {
+          console.log('\n🔗 Assigning hospitals to authorities...');
+          
+          try {
+            const hospitals = HospitalService.getAll();
+            if (hospitals.length > 0) {
+              // Find hospital authority user
+              const hospitalAuthUser = users.find(u => u.userType === 'hospital-authority');
+              if (hospitalAuthUser) {
+                UserService.assignHospital(hospitalAuthUser.id, hospitals[0].id, 'manager');
+                results.assignments++;
+                console.log(`  ✅ Assigned "${hospitals[0].name}" to "${hospitalAuthUser.name}"`);
+              }
+            }
+          } catch (error) {
+            console.error('  ❌ Failed to assign hospitals:', error.message);
+          }
         }
       }
     }
-    console.log(`Processed ${users.length} users`);
 
-    // Assign hospitals to hospital authorities
-    if (hospitals.length > 0 && users.length > 1) {
-      UserService.assignHospital(users[1].id, hospitals[0].id, 'manager'); // Dr. Nusrat Jahan -> Dhaka Medical College Hospital
-      UserService.assignHospital(users[2].id, hospitals[1].id, 'admin'); // Shamim Ahmed -> Chittagong Medical College Hospital
-      console.log('Assigned hospitals to authorities');
-    }
-
-    console.log('Database seeded successfully!');
-    process.exit(0);
+    console.log('\n🎉 Database seeding completed successfully!');
+    console.log('📊 Summary:', JSON.stringify(results, null, 2));
+    
+    return { success: true, results, dryRun };
+    
   } catch (error) {
-    console.error('Error seeding database:', error);
-    process.exit(1);
+    console.error('💥 Error seeding database:', error.message);
+    console.error('Stack trace:', error.stack);
+    
+    if (process.env.NODE_ENV === 'production') {
+      console.error('⚠️  Production seeding failure - application will continue without sample data');
+      return { success: false, error: error.message };
+    } else {
+      throw error;
+    }
   }
 };
 
-// Run seeder if called directly
+// CLI interface
 if (require.main === module) {
-  seedDatabase();
+  const args = process.argv.slice(2);
+  const options = {};
+  
+  // Parse command line arguments
+  args.forEach(arg => {
+    switch (arg) {
+      case '--force':
+        options.force = true;
+        break;
+      case '--dry-run':
+        options.dryRun = true;
+        break;
+      case '--skip-users':
+        options.skipUsers = true;
+        break;
+      case '--skip-hospitals':
+        options.skipHospitals = true;
+        break;
+      case '--help':
+        console.log('RapidCare Database Seeder');
+        console.log('Usage: node seeder.js [options]');
+        console.log('');
+        console.log('Options:');
+        console.log('  --force         Force seeding in production');
+        console.log('  --dry-run       Show what would be seeded without making changes');
+        console.log('  --skip-users    Skip user seeding');
+        console.log('  --skip-hospitals Skip hospital seeding');
+        console.log('  --help          Show this help message');
+        console.log('');
+        console.log('Environment Variables:');
+        console.log('  SEED_DATA=true  Enable seeding in production');
+        process.exit(0);
+        break;
+    }
+  });
+  
+  seedDatabase(options)
+    .then(result => {
+      if (result.success) {
+        console.log('✅ Seeding completed successfully');
+        process.exit(0);
+      } else {
+        console.error('❌ Seeding failed');
+        process.exit(1);
+      }
+    })
+    .catch(error => {
+      console.error('💥 Seeding error:', error.message);
+      process.exit(1);
+    });
 }
 
 module.exports = { seedDatabase }; 
