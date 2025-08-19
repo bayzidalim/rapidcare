@@ -313,11 +313,10 @@ The application uses SQLite with the following main tables:
 2. **Configure Vercel Project**
    - Go to [Vercel Dashboard](https://vercel.com/dashboard)
    - Click "New Project" and import your repository
-   - Vercel will automatically detect the configuration from `vercel.json`
-   - **Framework**: Next.js (auto-detected)
-   - **Root Directory**: `front-end` (configured in vercel.json)
-   - **Build Command**: `cd front-end && npm run build` (configured in vercel.json)
-   - **Output Directory**: `front-end/.next` (configured in vercel.json)
+   - **IMPORTANT**: Set **Root Directory** to `front-end`
+   - **Framework**: Next.js (will be auto-detected from package.json)
+   - Vercel will automatically use the `vercel.json` configuration in the front-end directory
+   - Leave all other settings as default
 
 3. **Environment Variables in Vercel**
    ```
@@ -380,22 +379,27 @@ The application uses SQLite with the following main tables:
 
 #### Common Issues
 
-1. **Build Failures**
+1. **Vercel "No Next.js version detected" Error**
+   - **Solution**: Set **Root Directory** to `front-end` in Vercel project settings
+   - Go to Project Settings → General → Root Directory → Set to `front-end`
+   - Redeploy the project
+
+2. **Build Failures**
    ```bash
    # Check build locally first
    cd front-end && npm run build
    cd back-end && npm start
    ```
 
-2. **Environment Variables**
+3. **Environment Variables**
    - Ensure all required variables are set in platform dashboards
    - Check variable names match exactly (case-sensitive)
 
-3. **CORS Issues**
+4. **CORS Issues**
    - Verify `FRONTEND_URL` is set correctly in backend
    - Check that frontend `NEXT_PUBLIC_API_URL` points to backend
 
-4. **Database Issues**
+5. **Database Issues**
    - Check backend logs for migration errors
    - Ensure database file permissions are correct
 
