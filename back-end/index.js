@@ -50,20 +50,6 @@ console.log('✅ Environment variables validated successfully');
 // Import database
 const { db } = require('./config/database');
 
-// Run database migrations on startup (production)
-if (process.env.NODE_ENV === 'production') {
-  try {
-    console.log('🔄 Running database migrations for production...');
-    const { runMigrations } = require('./migrations/migrate');
-    runMigrations();
-    console.log('✅ Database migrations completed successfully');
-  } catch (error) {
-    console.error('❌ Database migration failed:', error.message);
-    console.error('Application cannot start without proper database setup');
-    process.exit(1);
-  }
-}
-
 const app = express();
 
 // CORS Configuration for production
@@ -175,4 +161,4 @@ if (process.env.NODE_ENV !== 'test') {
   });
 }
 
-module.exports = app; 
+module.exports = app;
