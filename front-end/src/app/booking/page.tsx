@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import AuthGuard from '@/components/AuthGuard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -348,7 +348,7 @@ function BookingPageContent() {
   // Success page
   if (success) {
     return (
-      <ProtectedRoute>
+      <AuthGuard>
         <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50">
           <Navigation />
           <div className="max-w-2xl mx-auto px-4 py-16">
@@ -381,14 +381,14 @@ function BookingPageContent() {
             </Card>
           </div>
         </div>
-      </ProtectedRoute>
+      </AuthGuard>
     );
   }
 
   // Show login message if not authenticated
   if (!currentUser) {
     return (
-      <ProtectedRoute>
+      <AuthGuard>
         <div className="min-h-screen bg-gray-50">
           <Navigation />
           <div className="max-w-2xl mx-auto px-4 py-16">
@@ -412,12 +412,12 @@ function BookingPageContent() {
             </Card>
           </div>
         </div>
-      </ProtectedRoute>
+      </AuthGuard>
     );
   }
 
   return (
-    <ProtectedRoute>
+    <AuthGuard>
       <div className="min-h-screen bg-gray-50">
         <Navigation />
 
@@ -937,7 +937,7 @@ function BookingPageContent() {
           </form>
         </div>
       </div>
-    </ProtectedRoute>
+    </AuthGuard>
   );
 }
 

@@ -7,12 +7,18 @@ const AnalyticsService = require('../services/analyticsService');
 // Get all hospitals (public)
 exports.getAllHospitals = async (req, res) => {
   try {
-    const hospitals = HospitalService.getAll();
+    let hospitals = HospitalService.getAll();
+    
+    // For guest users, only return approved hospitals
+    if (req.isGuest) {
+      hospitals = hospitals.filter(hospital => hospital.approvalStatus === 'approved');
+    }
     
     res.json({
       success: true,
       data: hospitals,
-      count: hospitals.length
+      count: hospitals.length,
+      isGuest: req.isGuest || false
     });
   } catch (error) {
     console.error('Error fetching hospitals:', error);
@@ -27,6 +33,7 @@ exports.getAllHospitals = async (req, res) => {
 exports.getHospitalById = async (req, res) => {
   try {
     // Allow admins and hospital authorities to see unapproved hospitals
+    // Guests can only see approved hospitals
     const includeUnapproved = req.user && (req.user.userType === 'admin' || req.user.userType === 'hospital-authority');
     const hospital = HospitalService.getById(req.params.id, includeUnapproved);
     
@@ -36,10 +43,19 @@ exports.getHospitalById = async (req, res) => {
         error: 'Hospital not found'
       });
     }
+
+    // For guest users, only return approved hospitals
+    if (req.isGuest && hospital.approvalStatus !== 'approved') {
+      return res.status(404).json({
+        success: false,
+        error: 'Hospital not found'
+      });
+    }
     
     res.json({
       success: true,
-      data: hospital
+      data: hospital,
+      isGuest: req.isGuest || false
     });
   } catch (error) {
     console.error('Error fetching hospital:', error);
@@ -62,12 +78,18 @@ exports.getHospitalsWithResources = async (req, res) => {
       });
     }
     
-    const hospitals = HospitalService.getWithResources({ resourceType, minAvailable });
+    let hospitals = HospitalService.getWithResources({ resourceType, minAvailable });
+    
+    // For guest users, only return approved hospitals
+    if (req.isGuest) {
+      hospitals = hospitals.filter(hospital => hospital.approvalStatus === 'approved');
+    }
     
     res.json({
       success: true,
       data: hospitals,
-      count: hospitals.length
+      count: hospitals.length,
+      isGuest: req.isGuest || false
     });
   } catch (error) {
     console.error('Error fetching hospitals with resources:', error);
@@ -142,12 +164,18 @@ exports.updateHospitalResources = async (req, res) => {
 exports.searchHospitals = async (req, res) => {
   try {
     const { q, city, service } = req.query;
-    const hospitals = HospitalService.search({ q, city, service });
+    let hospitals = HospitalService.search({ q, city, service });
+    
+    // For guest users, only return approved hospitals
+    if (req.isGuest) {
+      hospitals = hospitals.filter(hospital => hospital.approvalStatus === 'approved');
+    }
     
     res.json({
       success: true,
       data: hospitals,
-      count: hospitals.length
+      count: hospitals.length,
+      isGuest: req.isGuest || false
     });
   } catch (error) {
     console.error('Error searching hospitals:', error);

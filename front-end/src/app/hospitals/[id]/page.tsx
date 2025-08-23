@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { hospitalAPI } from '@/lib/api';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isAuthenticated } from '@/lib/auth';
 import {
   Building2,
   MapPin,
@@ -25,7 +25,9 @@ import {
   Activity,
   TrendingUp,
   Users,
-  Calendar
+  Calendar,
+  LogIn,
+  UserPlus
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -77,12 +79,17 @@ export default function HospitalDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
+  const [isGuest, setIsGuest] = useState(!isAuthenticated());
 
   useEffect(() => {
     if (hospitalId) {
       loadHospitalDetails();
+      // Set up polling for real-time updates
+      const interval = setInterval(loadHospitalDetails, 30000); // Update every 30 seconds
+      return () => clearInterval(interval);
     }
     setCurrentUser(getCurrentUser());
+    setIsGuest(!isAuthenticated());
   }, [hospitalId]);
 
   const loadHospitalDetails = async () => {
@@ -163,8 +170,11 @@ export default function HospitalDetailPage() {
   };
 
   const handleBookNow = (resourceType?: string) => {
-    if (!currentUser) {
-      router.push('/login?redirect=' + encodeURIComponent(`/hospitals/${hospitalId}`));
+    if (isGuest) {
+      // For guests, redirect to login with return URL
+      const currentUrl = `/hospitals/${hospitalId}`;
+      const returnUrl = encodeURIComponent(currentUrl);
+      router.push(`/login?returnUrl=${returnUrl}`);
       return;
     }
     
@@ -173,6 +183,12 @@ export default function HospitalDetailPage() {
       : `/booking?hospitalId=${hospitalId}`;
     
     router.push(bookingUrl);
+  };
+
+  const handleLoginRedirect = () => {
+    const currentUrl = `/hospitals/${hospitalId}`;
+    const returnUrl = encodeURIComponent(currentUrl);
+    router.push(`/login?returnUrl=${returnUrl}`);
   };
 
   const getTotalAvailable = () => {
@@ -226,6 +242,34 @@ export default function HospitalDetailPage() {
       <Navigation />
       
       <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Guest Mode Banner */}
+        {isGuest && (
+          <Alert className="mb-6 border-blue-200 bg-blue-50">
+            <Users className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <strong>Browsing as Guest</strong> - You can view hospital information and availability. 
+                  <Link href="/login" className="underline hover:no-underline ml-1">
+                    Sign in to book resources
+                  </Link>
+                </div>
+                <div className="flex gap-2 ml-4">
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="bg-white hover:bg-gray-50"
+                    onClick={handleLoginRedirect}
+                  >
+                    <LogIn className="w-3 h-3 mr-1" />
+                    Sign In
+                  </Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Back Button */}
         <Link href="/hospitals" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-6">
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -279,9 +323,17 @@ export default function HospitalDetailPage() {
                 <CardTitle className="flex items-center gap-2">
                   <Activity className="w-5 h-5" />
                   Resource Availability
+                  {isGuest && (
+                    <Badge variant="outline" className="ml-2 text-xs">
+                      Guest View
+                    </Badge>
+                  )}
                 </CardTitle>
                 <CardDescription>
-                  Real-time availability of medical resources
+                  {isGuest 
+                    ? "Real-time availability of medical resources - Sign in to book"
+                    : "Real-time availability of medical resources"
+                  }
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -336,14 +388,34 @@ export default function HospitalDetailPage() {
                           </div>
                         </div>
 
-                        <Button 
-                          onClick={() => handleBookNow(resource.resourceType)}
-                          className="w-full mt-3"
-                          disabled={resource.available === 0}
-                          size="sm"
-                        >
-                          {resource.available === 0 ? 'Not Available' : 'Book Now'}
-                        </Button>
+                        {isGuest ? (
+                          <div className="mt-3 space-y-2">
+                            <Button 
+                              onClick={() => handleBookNow(resource.resourceType)}
+                              className="w-full"
+                              disabled={resource.available === 0}
+                              size="sm"
+                              variant="outline"
+                            >
+                              <LogIn className="w-4 h-4 mr-2" />
+                              {resource.available === 0 ? 'Not Available' : 'Login to Book'}
+                            </Button>
+                            {resource.available > 0 && (
+                              <p className="text-xs text-gray-500 text-center">
+                                Sign in required to book resources
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <Button 
+                            onClick={() => handleBookNow(resource.resourceType)}
+                            className="w-full mt-3"
+                            disabled={resource.available === 0}
+                            size="sm"
+                          >
+                            {resource.available === 0 ? 'Not Available' : 'Book Now'}
+                          </Button>
+                        )}
                       </div>
                     );
                   })}
@@ -466,33 +538,51 @@ export default function HospitalDetailPage() {
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button 
-                  onClick={() => handleBookNow()}
-                  className="w-full bg-blue-600 hover:bg-blue-700"
-                  disabled={getTotalAvailable() === 0}
-                >
-                  <Calendar className="w-4 h-4 mr-2" />
-                  {getTotalAvailable() === 0 ? 'No Resources Available' : 'Book Resources'}
-                </Button>
-                
-                {!currentUser && (
-                  <div className="text-center pt-4 border-t">
-                    <p className="text-sm text-gray-600 mb-3">
-                      Sign in to book medical resources
-                    </p>
-                    <div className="space-y-2">
-                      <Link href="/login" className="block">
-                        <Button variant="outline" className="w-full">
+                {isGuest ? (
+                  <>
+                    <Button 
+                      onClick={() => handleBookNow()}
+                      className="w-full"
+                      disabled={getTotalAvailable() === 0}
+                      variant="outline"
+                    >
+                      <LogIn className="w-4 h-4 mr-2" />
+                      {getTotalAvailable() === 0 ? 'No Resources Available' : 'Login to Book Resources'}
+                    </Button>
+                    
+                    <div className="text-center pt-4 border-t">
+                      <p className="text-sm text-gray-600 mb-3">
+                        Sign in to book medical resources and access your dashboard
+                      </p>
+                      <div className="space-y-2">
+                        <Button 
+                          onClick={handleLoginRedirect}
+                          className="w-full bg-blue-600 hover:bg-blue-700"
+                        >
+                          <LogIn className="w-4 h-4 mr-2" />
                           Sign In
                         </Button>
-                      </Link>
-                      <Link href="/register" className="block">
-                        <Button variant="outline" className="w-full">
-                          Create Account
-                        </Button>
-                      </Link>
+                        <Link href="/register" className="block">
+                          <Button variant="outline" className="w-full">
+                            <UserPlus className="w-4 h-4 mr-2" />
+                            Create Account
+                          </Button>
+                        </Link>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-3">
+                        You'll return to this page after signing in
+                      </p>
                     </div>
-                  </div>
+                  </>
+                ) : (
+                  <Button 
+                    onClick={() => handleBookNow()}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    disabled={getTotalAvailable() === 0}
+                  >
+                    <Calendar className="w-4 h-4 mr-2" />
+                    {getTotalAvailable() === 0 ? 'No Resources Available' : 'Book Resources'}
+                  </Button>
                 )}
               </CardContent>
             </Card>

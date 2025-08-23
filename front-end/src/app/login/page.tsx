@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,14 +12,23 @@ import { login } from '@/lib/auth';
 import { AlertTriangle, Building2 } from 'lucide-react';
 import Link from 'next/link';
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [returnUrl, setReturnUrl] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
+
+  useEffect(() => {
+    const returnUrlParam = searchParams.get('returnUrl');
+    if (returnUrlParam) {
+      setReturnUrl(decodeURIComponent(returnUrlParam));
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +37,9 @@ export default function LoginPage() {
 
     try {
       await login(formData.email, formData.password);
-      router.push('/dashboard');
+      // Redirect to return URL if provided, otherwise go to dashboard
+      const redirectTo = returnUrl || '/dashboard';
+      router.push(redirectTo);
     } catch (error: any) {
       // Handle different types of errors
       if (error.response?.status === 401) {
@@ -66,7 +77,10 @@ export default function LoginPage() {
             </div>
             <CardTitle className="text-2xl">Welcome Back to RapidCare</CardTitle>
             <CardDescription>
-              Access your emergency care platform account
+              {returnUrl 
+                ? 'Please log in to continue to your requested page'
+                : 'Access your emergency care platform account'
+              }
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -127,5 +141,20 @@ export default function LoginPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <LoginPageContent />
+    </Suspense>
   );
 } 

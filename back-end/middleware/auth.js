@@ -145,20 +145,66 @@ const optionalAuth = (req, res, next) => {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      req.isGuest = true;
       return next(); // Continue without user
     }
 
     const token = authHeader.substring(7);
     const decoded = UserService.verifyToken(token);
     
-    const user = UserService.getById(decoded.userId);
+    // Get user from database (handle both userId and id for compatibility)
+    const userId = decoded.userId || decoded.id;
+    const user = UserService.getById(userId);
+    
     if (user) {
       req.user = user;
+      req.isGuest = false;
+    } else {
+      req.isGuest = true;
     }
     
     next();
   } catch (error) {
+    req.isGuest = true;
     next(); // Continue without user
+  }
+};
+
+// Require authentication middleware (for protected endpoints)
+const requireAuth = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        error: 'Access token required'
+      });
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const decoded = UserService.verifyToken(token);
+    
+    // Get user from database (handle both userId and id for compatibility)
+    const userId = decoded.userId || decoded.id;
+    const user = UserService.getById(userId);
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Add user to request object
+    req.user = user;
+    req.isGuest = false;
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid token'
+    });
   }
 };
 
@@ -415,6 +461,7 @@ module.exports = {
   authorizeHospitalAuthority,
   authorizeHospitalAccess,
   optionalAuth,
+  requireAuth,
   requireAdmin,
   requireHospitalAuthority,
   requireOwnHospital,

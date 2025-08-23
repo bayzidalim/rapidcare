@@ -147,37 +147,18 @@ const createDatabaseConnection = async (retries = 3) => {
   }
 };
 
-// Initialize database connection
-const db = createDatabaseConnection();
-
-// Add connection monitoring
-db.on = db.on || function () { }; // Fallback for older versions
-
-// Graceful shutdown handler
-process.on('SIGINT', () => {
-  console.log('🔄 Closing database connection...');
-  try {
-    db.close();
-    console.log('✅ Database connection closed');
-  } catch (error) {
-    console.error('❌ Error closing database:', error.message);
-  }
-});
-
-process.on('SIGTERM', () => {
-  console.log('🔄 Closing database connection...');
-  try {
-    db.close();
-    console.log('✅ Database connection closed');
-  } catch (error) {
-    console.error('❌ Error closing database:', error.message);
-  }
-});
-
 // Create tables if they don't exist
-const initDatabase = () => {
+const initDatabase = async (database) => {
+  const execSQL = async (sql) => {
+    if (database.useBetterSqlite3) {
+      database.exec(sql);
+    } else {
+      await database.exec(sql);
+    }
+  };
+
   // Users table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
@@ -195,7 +176,7 @@ const initDatabase = () => {
   `);
 
   // Hospital authorities table (extends users)
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS hospital_authorities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userId INTEGER NOT NULL,
@@ -210,7 +191,7 @@ const initDatabase = () => {
   `);
 
   // Hospitals table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS hospitals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -242,7 +223,7 @@ const initDatabase = () => {
   `);
 
   // Surgeons table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS surgeons (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       hospitalId INTEGER,
@@ -258,7 +239,7 @@ const initDatabase = () => {
   `);
 
   // Enhanced Hospital resources table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS hospital_resources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       hospitalId INTEGER NOT NULL,
@@ -280,7 +261,7 @@ const initDatabase = () => {
   `);
 
   // Hospital services table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS hospital_services (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       hospitalId INTEGER,
@@ -291,7 +272,7 @@ const initDatabase = () => {
   `);
 
   // Enhanced Bookings table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS bookings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userId INTEGER NOT NULL,
@@ -346,7 +327,7 @@ const initDatabase = () => {
   `);
 
   // Blood requests table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS blood_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       requesterId INTEGER NOT NULL,
@@ -371,7 +352,7 @@ const initDatabase = () => {
   `);
 
   // Matched donors table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS matched_donors (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       bloodRequestId INTEGER,
@@ -388,7 +369,7 @@ const initDatabase = () => {
   // Financial Tables
 
   // Transactions table for payment processing
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       bookingId INTEGER NOT NULL,
@@ -411,7 +392,7 @@ const initDatabase = () => {
   `);
 
   // Hospital pricing table for resource rate management
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS hospital_pricing (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       hospitalId INTEGER NOT NULL,
@@ -434,7 +415,7 @@ const initDatabase = () => {
   `);
 
   // User balances table for revenue tracking
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS user_balances (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userId INTEGER NOT NULL,
@@ -454,7 +435,7 @@ const initDatabase = () => {
   `);
 
   // Balance transactions table for audit trails
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS balance_transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       balanceId INTEGER NOT NULL,
@@ -474,7 +455,7 @@ const initDatabase = () => {
   `);
 
   // Payment configuration table for hospital policies
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS payment_config (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       hospitalId INTEGER,
@@ -493,7 +474,7 @@ const initDatabase = () => {
   `);
 
   // Booking Status History table for audit trail
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS booking_status_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       bookingId INTEGER NOT NULL,
@@ -510,7 +491,7 @@ const initDatabase = () => {
   `);
 
   // Booking Notifications table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS booking_notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userId INTEGER NOT NULL,
@@ -527,7 +508,7 @@ const initDatabase = () => {
   `);
 
   // Resource Audit Log table
-  db.exec(`
+  await execSQL(`
     CREATE TABLE IF NOT EXISTS resource_audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       hospitalId INTEGER NOT NULL,
@@ -549,7 +530,7 @@ const initDatabase = () => {
 
   // Create indexes for better performance
   try {
-    db.exec(`
+    await execSQL(`
       CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings(userId);
       CREATE INDEX IF NOT EXISTS idx_bookings_hospital_id ON bookings(hospitalId);
       CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
@@ -566,7 +547,7 @@ const initDatabase = () => {
     `);
 
     // Create bookingReference index
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_bookings_reference ON bookings(bookingReference);`);
+    await execSQL(`CREATE INDEX IF NOT EXISTS idx_bookings_reference ON bookings(bookingReference);`);
   } catch (error) {
     console.error('Error creating indexes:', error.message);
   }
@@ -575,13 +556,13 @@ const initDatabase = () => {
 };
 
 // Database health check function
-const checkDatabaseHealth = () => {
+const checkDatabaseHealth = (database) => {
   try {
     // Test basic connectivity
-    const result = db.prepare('SELECT 1 as test').get();
+    const result = database.prepare('SELECT 1 as test').get();
 
     // Check integrity
-    const integrity = db.pragma('integrity_check');
+    const integrity = database.pragma('integrity_check');
 
     // Get database info
     const info = {
@@ -589,8 +570,8 @@ const checkDatabaseHealth = () => {
       integrity: integrity[0]?.integrity_check === 'ok',
       path: dbPath,
       size: fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0,
-      mode: db.pragma('journal_mode', { simple: true }),
-      foreign_keys: db.pragma('foreign_keys', { simple: true })
+      mode: database.pragma('journal_mode', { simple: true }),
+      foreign_keys: database.pragma('foreign_keys', { simple: true })
     };
 
     return info;
@@ -604,7 +585,7 @@ const checkDatabaseHealth = () => {
 };
 
 // Database backup function (for production)
-const createBackup = (backupPath) => {
+const createBackup = (database, backupPath) => {
   try {
     if (!backupPath) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -614,7 +595,7 @@ const createBackup = (backupPath) => {
     console.log(`🔄 Creating database backup: ${backupPath}`);
 
     // Use SQLite backup API
-    const backup = db.backup(backupPath);
+    const backup = database.backup(backupPath);
 
     console.log(`✅ Database backup created: ${backupPath}`);
     return backupPath;
@@ -624,39 +605,74 @@ const createBackup = (backupPath) => {
   }
 };
 
-// Initialize database on module load
-try {
-  initDatabase();
+// Initialize database and export
+let db;
 
-  // Log database status
-  const health = checkDatabaseHealth();
-  if (health.connected && health.integrity) {
-    console.log('✅ Database initialized and healthy');
-  } else {
-    console.warn('⚠️  Database initialized but health check failed:', health);
-  }
+const initializeDatabase = async () => {
+  try {
+    db = await createDatabaseConnection();
+    
+    // Add connection monitoring
+    db.on = db.on || function () { }; // Fallback for older versions
 
-  // Create backup in production on startup
-  if (process.env.NODE_ENV === 'production' && process.env.CREATE_STARTUP_BACKUP === 'true') {
-    try {
-      createBackup();
-    } catch (error) {
-      console.warn('⚠️  Startup backup failed:', error.message);
+    // Graceful shutdown handler
+    process.on('SIGINT', () => {
+      console.log('🔄 Closing database connection...');
+      try {
+        db.close();
+        console.log('✅ Database connection closed');
+      } catch (error) {
+        console.error('❌ Error closing database:', error.message);
+      }
+    });
+
+    process.on('SIGTERM', () => {
+      console.log('🔄 Closing database connection...');
+      try {
+        db.close();
+        console.log('✅ Database connection closed');
+      } catch (error) {
+        console.error('❌ Error closing database:', error.message);
+      }
+    });
+
+    await initDatabase(db);
+
+    // Log database status
+    const health = checkDatabaseHealth(db);
+    if (health.connected && health.integrity) {
+      console.log('✅ Database initialized and healthy');
+    } else {
+      console.warn('⚠️  Database initialized but health check failed:', health);
     }
-  }
 
-} catch (error) {
-  console.error('💥 Database initialization failed:', error.message);
-  throw error;
-}
+    // Create backup in production on startup
+    if (process.env.NODE_ENV === 'production' && process.env.CREATE_STARTUP_BACKUP === 'true') {
+      try {
+        createBackup(db);
+      } catch (error) {
+        console.warn('⚠️  Startup backup failed:', error.message);
+      }
+    }
+
+    return db;
+  } catch (error) {
+    console.error('💥 Database initialization failed:', error.message);
+    throw error;
+  }
+};
+
+// Initialize on module load and export the promise
+const dbPromise = initializeDatabase();
 
 // Export database and utility functions
 module.exports = {
-  db,
-  checkDatabaseHealth,
-  createBackup,
+  get db() { return db; },
+  dbPromise, // Export the promise for proper async handling
+  checkDatabaseHealth: () => checkDatabaseHealth(db),
+  createBackup: (backupPath) => createBackup(db, backupPath),
   dbPath
 };
 
 // For backward compatibility, also export db as default
-module.exports.default = db; 
+module.exports.default = () => db;

@@ -6,6 +6,7 @@ exports.createBloodRequest = async (req, res) => {
     const {
       requesterName,
       requesterPhone,
+      requesterEmail,
       bloodType,
       units,
       urgency,
@@ -19,10 +20,30 @@ exports.createBloodRequest = async (req, res) => {
       notes
     } = req.body;
 
+    // Guest-specific validation
+    if (req.isGuest) {
+      // For guest users, require all contact information
+      if (!requesterName || !requesterPhone) {
+        return res.status(400).json({
+          success: false,
+          error: 'Name and phone number are required for guest blood donations'
+        });
+      }
+      
+      // Basic phone validation
+      if (!/^\+?[\d\s\-\(\)]{10,}$/.test(requesterPhone)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Please provide a valid phone number'
+        });
+      }
+    }
+
     const requestData = {
-      requesterId: req.user.id, // Use authenticated user's ID
-      requesterName: requesterName || req.user.name,
-      requesterPhone: requesterPhone || req.user.phone,
+      requesterId: req.user ? req.user.id : null, // null for guest users
+      requesterName: requesterName || (req.user ? req.user.name : null),
+      requesterPhone: requesterPhone || (req.user ? req.user.phone : null),
+      requesterEmail: requesterEmail || (req.user ? req.user.email : null),
       bloodType,
       units,
       urgency,
@@ -33,7 +54,8 @@ exports.createBloodRequest = async (req, res) => {
       patientAge,
       medicalCondition,
       requiredBy,
-      notes
+      notes,
+      isGuestRequest: req.isGuest || false
     };
 
     const bloodRequest = BloodRequestService.create(requestData);
@@ -41,7 +63,10 @@ exports.createBloodRequest = async (req, res) => {
     res.status(201).json({
       success: true,
       data: bloodRequest,
-      message: 'Blood request created successfully'
+      message: req.isGuest 
+        ? 'Thank you for your blood donation request. We will contact you soon with next steps.'
+        : 'Blood request created successfully',
+      isGuest: req.isGuest || false
     });
   } catch (error) {
     console.error('Error creating blood request:', error);
@@ -56,12 +81,33 @@ exports.createBloodRequest = async (req, res) => {
 exports.getAllBloodRequests = async (req, res) => {
   try {
     const { status, bloodType, urgency } = req.query;
-    const bloodRequests = BloodRequestService.search({ status, bloodType, urgency });
+    let bloodRequests = BloodRequestService.search({ status, bloodType, urgency });
+
+    // For guest users, only show active/pending requests and limit sensitive information
+    if (req.isGuest) {
+      bloodRequests = bloodRequests
+        .filter(request => ['pending', 'active'].includes(request.status))
+        .map(request => ({
+          id: request.id,
+          bloodType: request.bloodType,
+          units: request.units,
+          urgency: request.urgency,
+          hospitalName: request.hospitalName,
+          hospitalAddress: request.hospitalAddress,
+          patientAge: request.patientAge,
+          medicalCondition: request.medicalCondition,
+          requiredBy: request.requiredBy,
+          createdAt: request.createdAt,
+          status: request.status
+          // Exclude sensitive contact information for privacy
+        }));
+    }
 
     res.json({
       success: true,
       data: bloodRequests,
-      count: bloodRequests.length
+      count: bloodRequests.length,
+      isGuest: req.isGuest || false
     });
   } catch (error) {
     console.error('Error fetching blood requests:', error);
@@ -75,7 +121,7 @@ exports.getAllBloodRequests = async (req, res) => {
 // Get specific blood request
 exports.getBloodRequestById = async (req, res) => {
   try {
-    const bloodRequest = BloodRequestService.getById(req.params.id);
+    let bloodRequest = BloodRequestService.getById(req.params.id);
 
     if (!bloodRequest) {
       return res.status(404).json({
@@ -84,9 +130,37 @@ exports.getBloodRequestById = async (req, res) => {
       });
     }
 
+    // For guest users, only show active/pending requests and limit sensitive information
+    if (req.isGuest) {
+      if (!['pending', 'active'].includes(bloodRequest.status)) {
+        return res.status(404).json({
+          success: false,
+          error: 'Blood request not found'
+        });
+      }
+
+      // Remove sensitive contact information for privacy
+      bloodRequest = {
+        id: bloodRequest.id,
+        bloodType: bloodRequest.bloodType,
+        units: bloodRequest.units,
+        urgency: bloodRequest.urgency,
+        hospitalName: bloodRequest.hospitalName,
+        hospitalAddress: bloodRequest.hospitalAddress,
+        hospitalContact: bloodRequest.hospitalContact,
+        patientAge: bloodRequest.patientAge,
+        medicalCondition: bloodRequest.medicalCondition,
+        requiredBy: bloodRequest.requiredBy,
+        notes: bloodRequest.notes,
+        createdAt: bloodRequest.createdAt,
+        status: bloodRequest.status
+      };
+    }
+
     res.json({
       success: true,
-      data: bloodRequest
+      data: bloodRequest,
+      isGuest: req.isGuest || false
     });
   } catch (error) {
     console.error('Error fetching blood request:', error);
@@ -171,12 +245,32 @@ exports.updateDonorStatus = async (req, res) => {
 exports.searchBloodRequests = async (req, res) => {
   try {
     const { bloodType, city, urgency } = req.query;
-    const bloodRequests = BloodRequestService.search({ bloodType, city, urgency });
+    let bloodRequests = BloodRequestService.search({ bloodType, city, urgency });
+
+    // For guest users, only show active/pending requests and limit sensitive information
+    if (req.isGuest) {
+      bloodRequests = bloodRequests
+        .filter(request => ['pending', 'active'].includes(request.status))
+        .map(request => ({
+          id: request.id,
+          bloodType: request.bloodType,
+          units: request.units,
+          urgency: request.urgency,
+          hospitalName: request.hospitalName,
+          hospitalAddress: request.hospitalAddress,
+          patientAge: request.patientAge,
+          medicalCondition: request.medicalCondition,
+          requiredBy: request.requiredBy,
+          createdAt: request.createdAt,
+          status: request.status
+        }));
+    }
 
     res.json({
       success: true,
       data: bloodRequests,
-      count: bloodRequests.length
+      count: bloodRequests.length,
+      isGuest: req.isGuest || false
     });
   } catch (error) {
     console.error('Error searching blood requests:', error);

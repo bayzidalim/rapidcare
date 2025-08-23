@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tooltip } from '@/components/ui/tooltip';
 import { hospitalAPI } from '@/lib/api';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isAuthenticated } from '@/lib/auth';
 import {
   Building2,
   MapPin,
@@ -26,9 +27,9 @@ import {
   AlertTriangle,
   CheckCircle,
   Users,
-  XCircle
-  ,
-  Activity
+  XCircle,
+  Activity,
+  LogIn
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -65,6 +66,7 @@ export default function HospitalsPage() {
   const [minAvailable, setMinAvailable] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
+  const [isUserAuthenticated, setIsUserAuthenticated] = useState(isAuthenticated());
 
   // Get unique cities from hospitals
   const cities = [...new Set(hospitals.map(h => h.city).filter((city): city is string => Boolean(city)))].sort();
@@ -72,6 +74,7 @@ export default function HospitalsPage() {
   useEffect(() => {
     loadHospitals();
     setCurrentUser(getCurrentUser());
+    setIsUserAuthenticated(isAuthenticated());
   }, []);
 
   useEffect(() => {
@@ -84,9 +87,11 @@ export default function HospitalsPage() {
       setError('');
 
       // Use the hospital resources API to get hospitals with resource data
+      // This endpoint supports both authenticated and guest access
       const response = await hospitalAPI.getHospitalsWithResources();
 
       if (response.data.success) {
+        // Show all approved hospitals to guests and authenticated users
         setHospitals(response.data.data);
       } else {
         setError('Failed to load hospitals');
@@ -186,8 +191,9 @@ export default function HospitalsPage() {
   };
 
   const handleBookNow = (hospital: Hospital) => {
-    if (!currentUser) {
-      router.push('/login?redirect=/hospitals');
+    if (!isUserAuthenticated) {
+      // Redirect to login with return URL for guests
+      router.push(`/login?redirect=${encodeURIComponent(`/booking?hospitalId=${hospital.id}`)}`);
       return;
     }
 
@@ -226,12 +232,25 @@ export default function HospitalsPage() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Find Emergency Medical Care
-          </h1>
-          <p className="text-gray-600">
-            Discover hospitals with available resources for immediate medical care.
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                Find Emergency Medical Care
+              </h1>
+              <p className="text-gray-600">
+                Discover hospitals with available resources for immediate medical care.
+                {!isUserAuthenticated && (
+                  <span className="text-blue-600 font-medium"> Browse as guest or sign in to book resources.</span>
+                )}
+              </p>
+            </div>
+            {!isUserAuthenticated && (
+              <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-2 rounded-lg">
+                <Users className="w-4 h-4" />
+                <span>Guest Mode</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Error Alert */}
@@ -471,23 +490,33 @@ export default function HospitalsPage() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-3">
-                    <Button
-                      onClick={() => handleBookNow(hospital)}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700"
-                      disabled={getTotalAvailableResources(hospital) === 0}
-                    >
-                      {getTotalAvailableResources(hospital) === 0 ? (
-                        <>
-                          <XCircle className="w-4 h-4 mr-2" />
-                          No Availability
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Book Now
-                        </>
-                      )}
-                    </Button>
+                    {getTotalAvailableResources(hospital) === 0 ? (
+                      <Button
+                        className="flex-1 bg-gray-400 cursor-not-allowed"
+                        disabled
+                      >
+                        <XCircle className="w-4 h-4 mr-2" />
+                        No Availability
+                      </Button>
+                    ) : !isUserAuthenticated ? (
+                      <Tooltip content="Please log in to book hospital resources">
+                        <Button
+                          onClick={() => handleBookNow(hospital)}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                        >
+                          <LogIn className="w-4 h-4 mr-2" />
+                          Login to Book
+                        </Button>
+                      </Tooltip>
+                    ) : (
+                      <Button
+                        onClick={() => handleBookNow(hospital)}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Book Now
+                      </Button>
+                    )}
                     <Link href={`/hospitals/${hospital.id}`}>
                       <Button variant="outline">
                         View Details
@@ -500,8 +529,8 @@ export default function HospitalsPage() {
           )}
         </div>
 
-        {/* Quick Actions */}
-        {!currentUser && (
+        {/* Quick Actions for Guests */}
+        {!isUserAuthenticated && (
           <Card className="mt-8">
             <CardContent className="pt-6">
               <div className="text-center">
@@ -510,11 +539,12 @@ export default function HospitalsPage() {
                   Ready to Book Emergency Care?
                 </h3>
                 <p className="text-gray-600 mb-4">
-                  Sign in to your account to book medical resources instantly.
+                  Sign in to your account to book medical resources instantly. You can browse all hospitals and their availability as a guest, but booking requires an account for secure payment processing.
                 </p>
                 <div className="flex gap-4 justify-center">
                   <Link href="/login">
                     <Button className="bg-blue-600 hover:bg-blue-700">
+                      <LogIn className="w-4 h-4 mr-2" />
                       Sign In
                     </Button>
                   </Link>
@@ -523,6 +553,25 @@ export default function HospitalsPage() {
                       Create Account
                     </Button>
                   </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Information for Guests */}
+        {!isUserAuthenticated && (
+          <Card className="mt-6 border-blue-200 bg-blue-50">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <AlertTriangle className="w-6 h-6 text-blue-600 mt-1 flex-shrink-0" />
+                <div>
+                  <h4 className="font-medium text-blue-900 mb-2">
+                    Guest Browsing Mode
+                  </h4>
+                  <p className="text-blue-800 text-sm">
+                    You're currently browsing as a guest. You can view all approved hospitals and their real-time availability, but you'll need to log in to book resources. This ensures secure payment processing and proper booking management.
+                  </p>
                 </div>
               </div>
             </CardContent>

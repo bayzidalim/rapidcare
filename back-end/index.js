@@ -48,7 +48,7 @@ if (!validateEnvironment()) {
 console.log('✅ Environment variables validated successfully');
 
 // Import database
-const { db } = require('./config/database');
+const { db, dbPromise } = require('./config/database');
 
 const app = express();
 
@@ -132,15 +132,21 @@ let reconciliationScheduler;
 
 // Only start server if not in test environment
 if (process.env.NODE_ENV !== 'test') {
-  // Start reconciliation scheduler
-  reconciliationScheduler = new ReconciliationScheduler(db);
-  reconciliationScheduler.startAll();
-  
-  app.listen(PORT, () => {
-    console.log(`🚀 RapidCare API server running on port ${PORT}`);
-    console.log(`🏥 Emergency Care, Delivered Fast - Ready to serve critical medical needs`);
-    console.log(`📊 Health check available at: http://localhost:${PORT}/api/health`);
-    console.log(`💰 Financial reconciliation scheduler started`);
+  // Wait for database initialization before starting server
+  dbPromise.then(() => {
+    // Start reconciliation scheduler
+    reconciliationScheduler = new ReconciliationScheduler(db);
+    reconciliationScheduler.startAll();
+    
+    app.listen(PORT, () => {
+      console.log(`🚀 RapidCare API server running on port ${PORT}`);
+      console.log(`🏥 Emergency Care, Delivered Fast - Ready to serve critical medical needs`);
+      console.log(`📊 Health check available at: http://localhost:${PORT}/api/health`);
+      console.log(`💰 Financial reconciliation scheduler started`);
+    });
+  }).catch((error) => {
+    console.error('💥 Failed to start server due to database initialization error:', error.message);
+    process.exit(1);
   });
 
   // Graceful shutdown

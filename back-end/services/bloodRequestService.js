@@ -5,16 +5,17 @@ class BloodRequestService {
   static create(requestData) {
     const stmt = db.prepare(`
       INSERT INTO blood_requests (
-        requesterId, requesterName, requesterPhone, bloodType, units,
+        requesterId, requesterName, requesterPhone, requesterEmail, bloodType, units,
         urgency, hospitalName, hospitalAddress, hospitalContact,
-        patientName, patientAge, medicalCondition, requiredBy, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        patientName, patientAge, medicalCondition, requiredBy, notes, isGuestRequest
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
-      requestData.requesterId,
+      requestData.requesterId || null, // Allow null for guest requests
       requestData.requesterName,
       requestData.requesterPhone,
+      requestData.requesterEmail || null,
       requestData.bloodType,
       requestData.units,
       requestData.urgency || 'medium',
@@ -25,7 +26,8 @@ class BloodRequestService {
       requestData.patientAge,
       requestData.medicalCondition,
       requestData.requiredBy,
-      requestData.notes
+      requestData.notes,
+      requestData.isGuestRequest ? 1 : 0
     );
 
     return this.getById(result.lastInsertRowid);
