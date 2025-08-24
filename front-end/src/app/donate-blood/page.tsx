@@ -15,7 +15,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { bloodAPI } from '@/lib/api';
-import { BloodRequest, BloodRequestFormData } from '@/lib/types';
+import { BloodRequest } from '@/lib/types';
+import { isAuthenticated, getCurrentUser } from '@/lib/auth';
 import { 
   Droplets, 
   Heart, 
@@ -26,22 +27,42 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  Users
+  Users,
+  Mail,
+  Info
 } from 'lucide-react';
 
-// Simplified blood request schema for quick form completion
-const bloodRequestSchema = z.object({
-  requesterId: z.number().min(1, 'Requester ID is required'),
-  requesterName: z.string().min(1, 'Name is required'),
-  requesterPhone: z.string().min(1, 'Phone number is required'),
+// Guest blood request schema - requires contact information
+const guestBloodRequestSchema = z.object({
+  requesterName: z.string().min(2, 'Name must be at least 2 characters'),
+  requesterPhone: z.string()
+    .min(10, 'Phone number must be at least 10 digits')
+    .regex(/^\+?[\d\s\-\(\)]{10,}$/, 'Please provide a valid phone number'),
+  requesterEmail: z.string().email('Please provide a valid email address').optional().or(z.literal('')),
   bloodType: z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']),
-  units: z.number().min(1, 'At least 1 unit is required'),
+  units: z.number().min(1, 'At least 1 unit is required').max(10, 'Maximum 10 units allowed'),
   urgency: z.enum(['low', 'medium', 'high', 'critical']),
-  hospital: z.object({
-    name: z.string().min(1, 'Hospital name is required'),
-    address: z.string().min(1, 'Hospital address is required'),
-    contact: z.string().min(1, 'Hospital contact is required'),
-  }),
+  hospitalName: z.string().min(2, 'Hospital name is required'),
+  hospitalAddress: z.string().min(5, 'Hospital address is required'),
+  hospitalContact: z.string().min(10, 'Hospital contact is required'),
+  patientName: z.string().min(2, 'Patient name is required'),
+  patientAge: z.number().min(1, 'Patient age is required').max(120, 'Please enter a valid age'),
+  medicalCondition: z.string().min(5, 'Please describe the medical condition'),
+  requiredBy: z.string().min(1, 'Required by date is required'),
+  notes: z.string().optional(),
+});
+
+// Authenticated user blood request schema - uses user info
+const authenticatedBloodRequestSchema = z.object({
+  requesterName: z.string().optional(),
+  requesterPhone: z.string().optional(),
+  requesterEmail: z.string().optional(),
+  bloodType: z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']),
+  units: z.number().min(1, 'At least 1 unit is required').max(10, 'Maximum 10 units allowed'),
+  urgency: z.enum(['low', 'medium', 'high', 'critical']),
+  hospitalName: z.string().min(2, 'Hospital name is required'),
+  hospitalAddress: z.string().min(5, 'Hospital address is required'),
+  hospitalContact: z.string().min(10, 'Hospital contact is required'),
   patientName: z.string().optional(),
   patientAge: z.number().optional(),
   medicalCondition: z.string().optional(),
@@ -49,24 +70,59 @@ const bloodRequestSchema = z.object({
   notes: z.string().optional(),
 });
 
+// Form data interface for both guest and authenticated users
+interface BloodRequestFormData {
+  requesterName?: string;
+  requesterPhone?: string;
+  requesterEmail?: string;
+  bloodType: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
+  units: number;
+  urgency: 'low' | 'medium' | 'high' | 'critical';
+  hospitalName: string;
+  hospitalAddress: string;
+  hospitalContact: string;
+  patientName?: string;
+  patientAge?: number;
+  medicalCondition?: string;
+  requiredBy: string;
+  notes?: string;
+}
+
 export default function BloodDonationPage() {
   const [bloodRequests, setBloodRequests] = useState<BloodRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('request');
+  const [isGuest, setIsGuest] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Check authentication status
+  useEffect(() => {
+    const authenticated = isAuthenticated();
+    const user = getCurrentUser();
+    setIsGuest(!authenticated);
+    setCurrentUser(user);
+  }, []);
+
+  // Choose schema based on authentication status
+  const schema = isGuest ? guestBloodRequestSchema : authenticatedBloodRequestSchema;
 
   const {
     register,
     handleSubmit,
     setValue,
+    reset,
     formState: { errors },
   } = useForm<BloodRequestFormData>({
-    resolver: zodResolver(bloodRequestSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
-      requesterId: 1, // In a real app, this would come from auth
       urgency: 'medium',
       units: 1,
+      // Pre-fill user data if authenticated
+      requesterName: currentUser?.name || '',
+      requesterPhone: currentUser?.phone || '',
+      requesterEmail: currentUser?.email || '',
     },
   });
 
@@ -88,14 +144,39 @@ export default function BloodDonationPage() {
       setLoading(true);
       setError('');
 
-      const response = await bloodAPI.createRequest(data);
+      // Prepare request data based on user type
+      const requestData = {
+        // For authenticated users, use their ID; for guests, this will be null on backend
+        requesterId: currentUser?.id || null,
+        requesterName: data.requesterName || currentUser?.name,
+        requesterPhone: data.requesterPhone || currentUser?.phone,
+        requesterEmail: data.requesterEmail || currentUser?.email,
+        bloodType: data.bloodType,
+        units: data.units,
+        urgency: data.urgency,
+        hospitalName: data.hospitalName,
+        hospitalAddress: data.hospitalAddress,
+        hospitalContact: data.hospitalContact,
+        patientName: data.patientName,
+        patientAge: data.patientAge,
+        medicalCondition: data.medicalCondition,
+        requiredBy: data.requiredBy,
+        notes: data.notes,
+      };
+
+      const response = await bloodAPI.createRequest(requestData);
       
       if (response.data.success) {
         setSuccess(true);
+        reset(); // Clear the form
         fetchBloodRequests(); // Refresh the list
       }
     } catch (error: any) {
-      setError(error.response?.data?.error || 'Failed to create blood request');
+      const errorMessage = error.response?.data?.error || 'Failed to create blood request';
+      setError(errorMessage);
+      
+      // Log error for debugging
+      console.error('Blood request submission error:', error);
     } finally {
       setLoading(false);
     }
@@ -133,16 +214,62 @@ export default function BloodDonationPage() {
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">
                   Blood Request Created!
                 </h2>
-                <p className="text-gray-600 mb-6">
-                  Your blood request has been submitted successfully. Donors will be notified and matched automatically.
-                </p>
-                <div className="flex gap-4 justify-center">
+                {isGuest ? (
+                  <div className="space-y-4">
+                    <p className="text-gray-600 mb-4">
+                      Thank you for your blood donation request. We have received your information and will contact you soon with next steps.
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
+                      <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                        <Info className="w-4 h-4" />
+                        What happens next?
+                      </h3>
+                      <ul className="text-sm text-blue-800 space-y-1">
+                        <li>• We will verify your request and contact information within 30 minutes</li>
+                        <li>• Potential donors in your area will be notified about your request</li>
+                        <li>• You will be contacted when donors are matched (usually within 2-4 hours)</li>
+                        <li>• Coordination will be done through the hospital you specified</li>
+                        <li>• You'll receive SMS updates on the status of your request</li>
+                      </ul>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-left">
+                      <h3 className="font-semibold text-amber-900 mb-2">Important Notes:</h3>
+                      <ul className="text-sm text-amber-800 space-y-1">
+                        <li>• Keep your phone available for coordination calls</li>
+                        <li>• Contact the hospital directly for urgent/critical needs</li>
+                        <li>• Consider creating an account for easier future requests and tracking</li>
+                        <li>• Your request will remain active for 48 hours unless fulfilled</li>
+                      </ul>
+                    </div>
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-left">
+                      <h3 className="font-semibold text-green-900 mb-2">Emergency Contact:</h3>
+                      <p className="text-sm text-green-800">
+                        For critical/life-threatening situations, please call the hospital directly or emergency services (999) 
+                        while we work to find donors for you.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-gray-600 mb-6">
+                    Your blood request has been submitted successfully. Donors will be notified and matched automatically.
+                  </p>
+                )}
+                <div className="flex flex-col sm:flex-row gap-4 justify-center mt-6">
                   <Button onClick={() => { setSuccess(false); setActiveTab('requests'); }}>
                     View All Requests
                   </Button>
                   <Button variant="outline" onClick={() => { setSuccess(false); setActiveTab('request'); }}>
                     Create Another Request
                   </Button>
+                  {isGuest && (
+                    <Button 
+                      variant="secondary" 
+                      onClick={() => window.location.href = '/register?returnTo=/donate-blood'}
+                      className="bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      Create Account for Tracking
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -165,6 +292,36 @@ export default function BloodDonationPage() {
           <p className="text-lg text-gray-600">
             Request blood donations or view existing requests to help save lives.
           </p>
+          {isGuest && (
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm text-blue-800 mb-2">
+                    You're browsing as a guest. You can request blood donations without creating an account, 
+                    but we'll need your contact information to coordinate with donors.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={() => window.location.href = '/login?returnTo=/donate-blood'}
+                      className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                    >
+                      Login
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      onClick={() => window.location.href = '/register?returnTo=/donate-blood'}
+                      className="bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      Create Account
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {error && (
@@ -185,165 +342,288 @@ export default function BloodDonationPage() {
               <CardHeader>
                 <CardTitle>Request Blood Donation</CardTitle>
                 <CardDescription>
-                  Fill out the form below to request blood donation for emergency situations.
+                  {isGuest 
+                    ? "Fill out the form below to request blood donation. We'll need your contact information to coordinate with donors."
+                    : "Fill out the form below to request blood donation for emergency situations."
+                  }
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                  {/* Essential Information */}
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="requesterName">Your Name</Label>
-                      <Input
-                        id="requesterName"
-                        {...register('requesterName')}
-                        placeholder="Full name"
-                      />
-                      {errors.requesterName && (
-                        <p className="text-red-600 text-sm mt-1">{errors.requesterName.message}</p>
-                      )}
+                  {/* Contact Information - Required for guests, optional for authenticated users */}
+                  {isGuest && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <User className="w-4 h-4" />
+                        Your Contact Information
+                      </h3>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="requesterName">Your Name *</Label>
+                          <Input
+                            id="requesterName"
+                            {...register('requesterName')}
+                            placeholder="Full name"
+                          />
+                          {errors.requesterName && (
+                            <p className="text-red-600 text-sm mt-1">{errors.requesterName.message}</p>
+                          )}
+                        </div>
+                        <div>
+                          <Label htmlFor="requesterPhone">Phone Number *</Label>
+                          <Input
+                            id="requesterPhone"
+                            {...register('requesterPhone')}
+                            placeholder="+880 1234 567890"
+                          />
+                          {errors.requesterPhone && (
+                            <p className="text-red-600 text-sm mt-1">{errors.requesterPhone.message}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <Label htmlFor="requesterEmail">Email Address (Optional)</Label>
+                        <Input
+                          id="requesterEmail"
+                          type="email"
+                          {...register('requesterEmail')}
+                          placeholder="your.email@example.com"
+                        />
+                        {errors.requesterEmail && (
+                          <p className="text-red-600 text-sm mt-1">{errors.requesterEmail.message}</p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <Label htmlFor="requesterPhone">Phone</Label>
-                      <Input
-                        id="requesterPhone"
-                        {...register('requesterPhone')}
-                        placeholder="Phone number"
-                      />
-                      {errors.requesterPhone && (
-                        <p className="text-red-600 text-sm mt-1">{errors.requesterPhone.message}</p>
-                      )}
+                  )}
+
+                  {/* Show contact info for authenticated users but make it optional */}
+                  {!isGuest && (
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="requesterName">Your Name (Optional)</Label>
+                        <Input
+                          id="requesterName"
+                          {...register('requesterName')}
+                          placeholder={currentUser?.name || "Full name"}
+                          defaultValue={currentUser?.name || ''}
+                        />
+                        {errors.requesterName && (
+                          <p className="text-red-600 text-sm mt-1">{errors.requesterName.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="requesterPhone">Phone (Optional)</Label>
+                        <Input
+                          id="requesterPhone"
+                          {...register('requesterPhone')}
+                          placeholder={currentUser?.phone || "Phone number"}
+                          defaultValue={currentUser?.phone || ''}
+                        />
+                        {errors.requesterPhone && (
+                          <p className="text-red-600 text-sm mt-1">{errors.requesterPhone.message}</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Blood Requirements */}
-                  <div className="grid md:grid-cols-4 gap-4">
-                    <div>
-                      <Label htmlFor="bloodType">Blood Type</Label>
-                      <Select onValueChange={(value) => setValue('bloodType', value as any)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select blood type" />
-                          <SelectItem value="A+">A+</SelectItem>
-                          <SelectItem value="A-">A-</SelectItem>
-                          <SelectItem value="B+">B+</SelectItem>
-                          <SelectItem value="B-">B-</SelectItem>
-                          <SelectItem value="AB+">AB+</SelectItem>
-                          <SelectItem value="AB-">AB-</SelectItem>
-                          <SelectItem value="O+">O+</SelectItem>
-                          <SelectItem value="O-">O-</SelectItem>
-                        </SelectTrigger>
-                      </Select>
-                      {errors.bloodType && (
-                        <p className="text-red-600 text-sm mt-1">{errors.bloodType.message}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="units">Units</Label>
-                      <Input
-                        id="units"
-                        type="number"
-                        {...register('units', { valueAsNumber: true })}
-                        placeholder="1"
-                        min="1"
-                        defaultValue={1}
-                      />
-                      {errors.units && (
-                        <p className="text-red-600 text-sm mt-1">{errors.units.message}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="urgency">Urgency</Label>
-                      <Select onValueChange={(value) => setValue('urgency', value as any)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select urgency level" />
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="critical">Critical</SelectItem>
-                        </SelectTrigger>
-                      </Select>
-                      {errors.urgency && (
-                        <p className="text-red-600 text-sm mt-1">{errors.urgency.message}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="requiredBy">Required By</Label>
-                      <Input
-                        id="requiredBy"
-                        type="datetime-local"
-                        {...register('requiredBy')}
-                      />
-                      {errors.requiredBy && (
-                        <p className="text-red-600 text-sm mt-1">{errors.requiredBy.message}</p>
-                      )}
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h3 className="font-semibold text-red-900 mb-3 flex items-center gap-2">
+                      <Droplets className="w-4 h-4" />
+                      Blood Requirements
+                    </h3>
+                    <div className="grid md:grid-cols-4 gap-4">
+                      <div>
+                        <Label htmlFor="bloodType">Blood Type *</Label>
+                        <Select onValueChange={(value) => setValue('bloodType', value as any)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select blood type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="A+">A+</SelectItem>
+                            <SelectItem value="A-">A-</SelectItem>
+                            <SelectItem value="B+">B+</SelectItem>
+                            <SelectItem value="B-">B-</SelectItem>
+                            <SelectItem value="AB+">AB+</SelectItem>
+                            <SelectItem value="AB-">AB-</SelectItem>
+                            <SelectItem value="O+">O+</SelectItem>
+                            <SelectItem value="O-">O-</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {errors.bloodType && (
+                          <p className="text-red-600 text-sm mt-1">{errors.bloodType.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="units">Units *</Label>
+                        <Input
+                          id="units"
+                          type="number"
+                          {...register('units', { valueAsNumber: true })}
+                          placeholder="1"
+                          min="1"
+                          max="10"
+                          defaultValue={1}
+                        />
+                        {errors.units && (
+                          <p className="text-red-600 text-sm mt-1">{errors.units.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="urgency">Urgency *</Label>
+                        <Select onValueChange={(value) => setValue('urgency', value as any)} defaultValue="medium">
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select urgency level" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="critical">Critical</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {errors.urgency && (
+                          <p className="text-red-600 text-sm mt-1">{errors.urgency.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="requiredBy">Required By *</Label>
+                        <Input
+                          id="requiredBy"
+                          type="datetime-local"
+                          {...register('requiredBy')}
+                          min={new Date().toISOString().slice(0, 16)}
+                        />
+                        {errors.requiredBy && (
+                          <p className="text-red-600 text-sm mt-1">{errors.requiredBy.message}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   {/* Hospital Information */}
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <div>
-                      <Label htmlFor="hospitalName">Hospital Name</Label>
-                      <Input
-                        id="hospitalName"
-                        {...register('hospital.name')}
-                        placeholder="Hospital name"
-                      />
-                      {errors.hospital?.name && (
-                        <p className="text-red-600 text-sm mt-1">{errors.hospital.name.message}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="hospitalContact">Hospital Phone</Label>
-                      <Input
-                        id="hospitalContact"
-                        {...register('hospital.contact')}
-                        placeholder="Hospital phone"
-                      />
-                      {errors.hospital?.contact && (
-                        <p className="text-red-600 text-sm mt-1">{errors.hospital.contact.message}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="hospitalAddress">Hospital Address</Label>
-                      <Input
-                        id="hospitalAddress"
-                        {...register('hospital.address')}
-                        placeholder="Hospital address"
-                      />
-                      {errors.hospital?.address && (
-                        <p className="text-red-600 text-sm mt-1">{errors.hospital.address.message}</p>
-                      )}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                      <MapPin className="w-4 h-4" />
+                      Hospital Information
+                    </h3>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      <div>
+                        <Label htmlFor="hospitalName">Hospital Name *</Label>
+                        <Input
+                          id="hospitalName"
+                          {...register('hospitalName')}
+                          placeholder="Hospital name"
+                        />
+                        {errors.hospitalName && (
+                          <p className="text-red-600 text-sm mt-1">{errors.hospitalName.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="hospitalContact">Hospital Phone *</Label>
+                        <Input
+                          id="hospitalContact"
+                          {...register('hospitalContact')}
+                          placeholder="Hospital phone"
+                        />
+                        {errors.hospitalContact && (
+                          <p className="text-red-600 text-sm mt-1">{errors.hospitalContact.message}</p>
+                        )}
+                      </div>
+                      <div className="md:col-span-1">
+                        <Label htmlFor="hospitalAddress">Hospital Address *</Label>
+                        <Input
+                          id="hospitalAddress"
+                          {...register('hospitalAddress')}
+                          placeholder="Hospital address"
+                        />
+                        {errors.hospitalAddress && (
+                          <p className="text-red-600 text-sm mt-1">{errors.hospitalAddress.message}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Optional Patient Information */}
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <div>
-                      <Label htmlFor="patientName">Patient Name (Optional)</Label>
-                      <Input
-                        id="patientName"
-                        {...register('patientName')}
-                        placeholder="Patient name"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="patientAge">Patient Age (Optional)</Label>
-                      <Input
-                        id="patientAge"
-                        type="number"
-                        {...register('patientAge', { valueAsNumber: true })}
-                        placeholder="Age"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="medicalCondition">Medical Condition (Optional)</Label>
-                      <Input
-                        id="medicalCondition"
-                        {...register('medicalCondition')}
-                        placeholder="Brief condition"
-                      />
+                  {/* Patient Information */}
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h3 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
+                      <Heart className="w-4 h-4" />
+                      Patient Information {isGuest && <span className="text-red-600">*</span>}
+                    </h3>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      <div>
+                        <Label htmlFor="patientName">
+                          Patient Name {isGuest && <span className="text-red-600">*</span>}
+                        </Label>
+                        <Input
+                          id="patientName"
+                          {...register('patientName')}
+                          placeholder="Patient name"
+                        />
+                        {errors.patientName && (
+                          <p className="text-red-600 text-sm mt-1">{errors.patientName.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="patientAge">
+                          Patient Age {isGuest && <span className="text-red-600">*</span>}
+                        </Label>
+                        <Input
+                          id="patientAge"
+                          type="number"
+                          {...register('patientAge', { valueAsNumber: true })}
+                          placeholder="Age"
+                          min="1"
+                          max="120"
+                        />
+                        {errors.patientAge && (
+                          <p className="text-red-600 text-sm mt-1">{errors.patientAge.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="medicalCondition">
+                          Medical Condition {isGuest && <span className="text-red-600">*</span>}
+                        </Label>
+                        <Input
+                          id="medicalCondition"
+                          {...register('medicalCondition')}
+                          placeholder="Brief condition description"
+                        />
+                        {errors.medicalCondition && (
+                          <p className="text-red-600 text-sm mt-1">{errors.medicalCondition.message}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Additional Notes */}
+                  <div>
+                    <Label htmlFor="notes">Additional Notes (Optional)</Label>
+                    <Textarea
+                      id="notes"
+                      {...register('notes')}
+                      placeholder="Any additional information that might help donors or coordinators..."
+                      rows={3}
+                    />
+                    {errors.notes && (
+                      <p className="text-red-600 text-sm mt-1">{errors.notes.message}</p>
+                    )}
+                  </div>
+
+                  {/* Guest Information Notice */}
+                  {isGuest && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <h4 className="font-semibold text-amber-900 mb-2">Important Information for Guest Users:</h4>
+                      <ul className="text-sm text-amber-800 space-y-1">
+                        <li>• Your contact information will be used to coordinate with donors</li>
+                        <li>• We will verify your request before notifying potential donors (within 30 minutes)</li>
+                        <li>• Keep your phone available for coordination calls and SMS updates</li>
+                        <li>• For urgent/critical needs, contact the hospital directly while we find donors</li>
+                        <li>• Creating an account allows you to track requests and get faster processing</li>
+                        <li>• Your information is kept secure and only shared with matched donors</li>
+                      </ul>
+                    </div>
+                  )}
 
                   <Button type="submit" disabled={loading} className="w-full">
                     {loading ? 'Creating Request...' : 'Submit Blood Request'}
@@ -377,7 +657,7 @@ export default function BloodDonationPage() {
                       </div>
                       <CardDescription className="flex items-center gap-1">
                         <MapPin className="w-4 h-4" />
-                        {request.hospital?.name || 'Hospital not specified'}
+                        {(request as any).hospitalName || request.hospital?.name || 'Hospital not specified'}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -404,6 +684,13 @@ export default function BloodDonationPage() {
                         </div>
                       )}
 
+                      {(request as any).medicalCondition && (
+                        <div className="text-sm">
+                          <span className="font-medium">Condition:</span>
+                          <span className="ml-1">{(request as any).medicalCondition}</span>
+                        </div>
+                      )}
+
                       <div className="text-sm">
                         <span className="font-medium">Required by:</span>
                         <span className="ml-1">
@@ -418,15 +705,20 @@ export default function BloodDonationPage() {
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <User className="w-4 h-4" />
-                        <span>{request.requesterName}</span>
-                      </div>
+                      {/* Show contact info only for authenticated users or if it's their own request */}
+                      {!isGuest && (
+                        <>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <User className="w-4 h-4" />
+                            <span>{request.requesterName}</span>
+                          </div>
 
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Phone className="w-4 h-4" />
-                        <span>{request.requesterPhone}</span>
-                      </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Phone className="w-4 h-4" />
+                            <span>{request.requesterPhone}</span>
+                          </div>
+                        </>
+                      )}
 
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Clock className="w-4 h-4" />
@@ -444,9 +736,15 @@ export default function BloodDonationPage() {
                         <Button variant="outline" className="flex-1">
                           View Details
                         </Button>
-                        <Button className="flex-1">
-                          Donate Blood
-                        </Button>
+                        {isGuest ? (
+                          <Button className="flex-1" onClick={() => window.location.href = '/login'}>
+                            Login to Donate
+                          </Button>
+                        ) : (
+                          <Button className="flex-1">
+                            Donate Blood
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

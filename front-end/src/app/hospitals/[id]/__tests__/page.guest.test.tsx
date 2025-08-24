@@ -136,9 +136,9 @@ describe('Hospital Detail Page - Guest Access', () => {
     expect(screen.getAllByText('Hospital Beds')[0]).toBeInTheDocument();
     expect(screen.getAllByText('ICU')[0]).toBeInTheDocument();
     
-    // Check availability numbers
-    expect(screen.getByText('25')).toBeInTheDocument(); // Available beds
-    expect(screen.getByText('5')).toBeInTheDocument(); // Available ICU
+    // Check availability numbers (using getAllByText for multiple instances)
+    expect(screen.getAllByText('25')[0]).toBeInTheDocument(); // Available beds
+    expect(screen.getAllByText('5')[0]).toBeInTheDocument(); // Available ICU
   });
 
   test('shows login prompts on booking buttons for guests', async () => {

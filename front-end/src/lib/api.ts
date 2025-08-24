@@ -11,6 +11,44 @@ const api = axios.create({
   },
 });
 
+// Public API client for guest access (no authentication required)
+const publicApi = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Public API request interceptor (adds guest session but no auth)
+publicApi.interceptors.request.use(
+  (config) => {
+    // Add guest session ID if available
+    const guestSession = localStorage.getItem('guestSession');
+    if (guestSession) {
+      try {
+        const session = JSON.parse(guestSession);
+        config.headers['X-Guest-Session'] = session.sessionId;
+      } catch (error) {
+        // Invalid guest session, ignore
+      }
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Public API response interceptor (no auth redirects)
+publicApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Don't redirect on 401 for public endpoints
+    return Promise.reject(error);
+  }
+);
+
 // Retry utility for critical operations
 const retryOperation = async <T>(
   operation: () => Promise<T>,
@@ -46,7 +84,7 @@ const retryOperation = async <T>(
   throw lastError;
 };
 
-// Request interceptor
+// Request interceptor with guest session support
 api.interceptors.request.use(
   (config) => {
     // Add auth token if available
@@ -54,6 +92,18 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Add guest session ID if in guest mode
+    const guestSession = localStorage.getItem('guestSession');
+    if (guestSession && !token) {
+      try {
+        const session = JSON.parse(guestSession);
+        config.headers['X-Guest-Session'] = session.sessionId;
+      } catch (error) {
+        // Invalid guest session, ignore
+      }
+    }
+    
     return config;
   },
   (error) => {
@@ -61,7 +111,7 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor
+// Response interceptor with guest mode support
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -69,23 +119,33 @@ api.interceptors.response.use(
       // Only redirect to login if it's not a login request itself
       // This prevents redirecting when login fails due to wrong credentials
       const isLoginRequest = error.config?.url?.includes('/auth/login');
-      if (!isLoginRequest) {
+      const isPublicEndpoint = error.config?.url?.includes('/hospitals') || 
+                              error.config?.url?.includes('/blood');
+      
+      if (!isLoginRequest && !isPublicEndpoint) {
         localStorage.removeItem('token');
-        window.location.href = '/login';
+        localStorage.removeItem('user');
+        
+        // Store current path for redirect after login
+        const currentPath = window.location.pathname;
+        const returnUrl = currentPath !== '/' ? `?returnUrl=${encodeURIComponent(currentPath)}` : '';
+        
+        window.location.href = `/login${returnUrl}`;
       }
     }
     return Promise.reject(error);
   }
 );
 
-// Hospital API
+// Hospital API with guest support
 export const hospitalAPI = {
-  getAll: () => api.get('/hospitals'),
-  getById: (id: number) => api.get(`/hospitals/${id}`),
-  search: (params: any) => api.get('/hospitals/search', { params }),
-  getWithResources: (params?: any) => api.get('/hospital-resources', { params }),
-  getHospitalsWithResources: (params?: any) => api.get('/hospital-resources', { params }),
-  getHospitalResources: (id: number) => api.get(`/hospital-resources/${id}`),
+  // Public endpoints (work for both authenticated and guest users)
+  getAll: () => publicApi.get('/hospitals'),
+  getById: (id: number) => publicApi.get(`/hospitals/${id}`),
+  search: (params: any) => publicApi.get('/hospitals/search', { params }),
+  getWithResources: (params?: any) => publicApi.get('/hospital-resources', { params }),
+  getHospitalsWithResources: (params?: any) => publicApi.get('/hospital-resources', { params }),
+  getHospitalResources: (id: number) => publicApi.get(`/hospital-resources/${id}`),
   updateResources: (id: number, data: any) => api.put(`/hospital-resources/${id}`, data),
   updateResourceType: (id: number, resourceType: string, data: any) => 
     api.put(`/hospital-resources/${id}/${resourceType}`, data),
@@ -136,10 +196,11 @@ export const bookingAPI = {
     api.get(`/bookings/hospital/${hospitalId}/history`, { params }),
 };
 
-// Blood Request API
+// Blood Request API with guest support
 export const bloodAPI = {
-  createRequest: (data: any) => api.post('/blood/request', data),
-  getAllRequests: (params?: any) => api.get('/blood/requests', { params }),
+  // Public endpoints (work for both authenticated and guest users)
+  createRequest: (data: any) => publicApi.post('/blood/request', data),
+  getAllRequests: (params?: any) => publicApi.get('/blood/requests', { params }),
   getMyRequests: () => api.get('/blood/my-requests'),
   searchRequests: (params: any) => api.get('/blood/requests/search', { params }),
   getRequestById: (id: number) => api.get(`/blood/requests/${id}`),
@@ -394,4 +455,91 @@ export const healthAPI = {
   check: () => api.get('/health'),
 };
 
+// API client selection utility
+export const getApiClient = (requireAuth: boolean = true) => {
+  return requireAuth ? api : publicApi;
+};
+
+// Guest-specific API methods
+export const guestAPI = {
+  // Hospital browsing for guests
+  getHospitals: (params?: any) => publicApi.get('/hospitals', { params }),
+  getHospitalDetails: (id: number) => publicApi.get(`/hospitals/${id}`),
+  getHospitalResources: (id: number) => publicApi.get(`/hospital-resources/${id}`),
+  searchHospitals: (params: any) => publicApi.get('/hospitals/search', { params }),
+  
+  // Blood donation for guests
+  createBloodRequest: (data: any) => publicApi.post('/blood/request', data),
+  getBloodRequests: (params?: any) => publicApi.get('/blood/requests', { params }),
+  
+  // Analytics tracking for guests (if implemented)
+  trackActivity: (data: any) => publicApi.post('/analytics/guest-activity', data),
+};
+
+// Utility to check if an endpoint requires authentication
+export const requiresAuthentication = (endpoint: string): boolean => {
+  const publicEndpoints = [
+    '/hospitals',
+    '/hospital-resources',
+    '/blood/requests',
+    '/blood/request',
+    '/auth/login',
+    '/auth/register',
+    '/health',
+  ];
+  
+  return !publicEndpoints.some(publicEndpoint => 
+    endpoint.includes(publicEndpoint)
+  );
+};
+
+// Enhanced API call wrapper with guest support
+export const apiCall = async <T>(
+  endpoint: string,
+  options: {
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    data?: any;
+    params?: any;
+    requireAuth?: boolean;
+  } = {}
+): Promise<T> => {
+  const { method = 'GET', data, params, requireAuth } = options;
+  
+  // Determine if auth is required
+  const needsAuth = requireAuth !== undefined ? requireAuth : requiresAuthentication(endpoint);
+  const client = getApiClient(needsAuth);
+  
+  try {
+    let response;
+    
+    switch (method) {
+      case 'GET':
+        response = await client.get(endpoint, { params });
+        break;
+      case 'POST':
+        response = await client.post(endpoint, data);
+        break;
+      case 'PUT':
+        response = await client.put(endpoint, data);
+        break;
+      case 'DELETE':
+        response = await client.delete(endpoint, { data });
+        break;
+      default:
+        throw new Error(`Unsupported method: ${method}`);
+    }
+    
+    return response.data;
+  } catch (error: any) {
+    // Enhanced error handling for guest vs authenticated users
+    if (error.response?.status === 401 && !needsAuth) {
+      // This shouldn't happen for public endpoints, but handle gracefully
+      console.warn('Unexpected 401 on public endpoint:', endpoint);
+    }
+    
+    throw error;
+  }
+};
+
+export { publicApi };
 export default api; 
