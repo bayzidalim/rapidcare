@@ -1,15 +1,6 @@
 const db = require('../config/database');
 
-/**
- * Migration: Add User Balance and Simplified Pricing System
- * 
- * This migration adds:
- * 1. Balance field to users table with default 10,000 BDT
- * 2. Simplified hospital_pricing table for resource pricing
- * 3. Simple transactions table for payment tracking
- */
-
-const addUserBalanceAndSimplePricing = () => {
+function up() {
   console.log('🔄 Adding user balance and simplified pricing system...');
 
   try {
@@ -118,14 +109,10 @@ const addUserBalanceAndSimplePricing = () => {
     console.error('❌ Migration failed:', error.message);
     throw error;
   }
-};
-
-// Export the migration function
-module.exports = {
-  addUserBalanceAndSimplePricing
-};
-
-// Allow direct execution for testing
-if (require.main === module) {
-  addUserBalanceAndSimplePricing();
 }
+
+function down() {
+  console.log('Down migration for 009_add_user_balance_and_simple_pricing not implemented');
+}
+
+module.exports = { up, down };

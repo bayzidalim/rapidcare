@@ -404,7 +404,6 @@ class BookingApprovalService {
    */
   static async completeBooking(bookingId, completedBy, completionData = {}) {
     const transaction = db.transaction(async () => {
-      try {
         // Get booking details
         const booking = Booking.findById(bookingId);
         if (!booking) {
@@ -469,10 +468,6 @@ class BookingApprovalService {
             notes: completionData.notes
           }
         };
-
-      } catch (error) {
-        throw error;
-      }
     });
 
     try {
@@ -498,7 +493,6 @@ class BookingApprovalService {
    */
   static async cancelBooking(bookingId, cancelledBy, cancellationData) {
     const transaction = db.transaction(async () => {
-      try {
         // Get booking details
         const booking = Booking.findById(bookingId);
         if (!booking) {
@@ -572,10 +566,6 @@ class BookingApprovalService {
             notes: cancellationData.notes
           }
         };
-
-      } catch (error) {
-        throw error;
-      }
     });
 
     try {

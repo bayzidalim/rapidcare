@@ -164,7 +164,7 @@ if (require.main === module) {
   const command = args[0];
 
   switch (command) {
-    case 'process':
+    case 'process': {
       const batchSize = parseInt(args[1]) || 10;
       const continuous = args.includes('--continuous');
       const priority = args.find(arg => arg.startsWith('--priority='))?.split('=')[1];
@@ -176,8 +176,9 @@ if (require.main === module) {
         intervalMs: 5000
       }).catch(console.error);
       break;
+    }
 
-    case 'stats':
+    case 'stats': {
       getQueueStatistics().then(stats => {
         if (stats) {
           console.log('\n📊 Notification Queue Statistics:');
@@ -187,14 +188,16 @@ if (require.main === module) {
         }
       }).catch(console.error);
       break;
+    }
 
-    case 'cleanup':
+    case 'cleanup': {
       const days = parseInt(args[1]) || 30;
       const onlyDelivered = !args.includes('--all');
       
       cleanupOldNotifications({ olderThanDays: days, onlyDelivered })
         .catch(console.error);
       break;
+    }
 
     default:
       console.log('Usage: node notificationProcessor.js <command> [options]');

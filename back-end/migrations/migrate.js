@@ -70,14 +70,26 @@ const runMigrations = () => {
       try {
         const migrationPath = path.join(__dirname, migrationFile);
         const migration = require(migrationPath);
+        console.log(`  - Found functions: ${Object.keys(migration).join(', ')}`);
         
         // Execute the migration
-        if (typeof migration.addFinancialTables === 'function') {
+        if (typeof migration.up === 'function') {
+          // New migration format with up/down functions
+          console.log('  - Calling up()');
+          migration.up(db);
+        } else if (typeof migration.addFinancialTables === 'function') {
+          console.log('  - Calling addFinancialTables()');
           migration.addFinancialTables();
         } else if (typeof migration.addResourceBookingManagement === 'function') {
+          console.log('  - Calling addResourceBookingManagement()');
           migration.addResourceBookingManagement();
         } else if (typeof migration.addNotificationSystem === 'function') {
+          console.log('  - Calling addNotificationSystem()');
           migration.addNotificationSystem();
+        } else if (typeof migration === 'function') {
+          // Migration exports a default function
+          console.log('  - Calling default migration function');
+          migration();
         } else {
           console.warn(`⚠️  Migration ${migrationFile} does not export expected function`);
           continue;
@@ -119,7 +131,7 @@ if (require.main === module) {
     case 'rollback':
       rollbackLastMigration();
       break;
-    case 'status':
+    case 'status': {
       initMigrationsTable();
       const executed = getExecutedMigrations();
       const available = getMigrationFiles();
@@ -135,6 +147,7 @@ if (require.main === module) {
         pending.forEach(file => console.log(`  - ${file}`));
       }
       break;
+    }
     default:
       console.log('Usage: node migrate.js [up|rollback|status]');
       console.log('  up (default): Run pending migrations');

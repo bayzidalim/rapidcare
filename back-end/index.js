@@ -14,6 +14,30 @@ app.use(express.json());
 // Database connection
 console.log('RapidCare: Connected to SQLite database');
 
+// Run startup validation for hospital authorities
+const runStartupValidation = require('./scripts/startup-validation');
+runStartupValidation().then(success => {
+  if (success) {
+    console.log('✅ Hospital authority validation completed successfully');
+  } else {
+    console.log('⚠️  Hospital authority validation completed with issues');
+  }
+}).catch(error => {
+  console.error('❌ Error during hospital authority validation:', error);
+});
+
+// Initialize admin balance
+const AdminBalanceService = require('./services/adminBalanceService');
+AdminBalanceService.initializeAdminBalance().then(result => {
+  if (result.success) {
+    console.log('✅ Admin balance initialized successfully');
+  } else {
+    console.log('⚠️  Admin balance initialization:', result.message);
+  }
+}).catch(error => {
+  console.error('❌ Error initializing admin balance:', error);
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/hospitals', require('./routes/hospitals'));
@@ -26,10 +50,17 @@ app.use('/api/revenue', require('./routes/revenue'));
 app.use('/api/polling', require('./routes/polling'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/audit', require('./routes/audit'));
+app.use('/api/reviews', require('./routes/reviews'));
 // Initialize reconciliation routes
 const { router: reconciliationRouter, initializeReconciliationService } = require('./routes/reconciliation');
 initializeReconciliationService(db);
 app.use('/api/reconciliation', reconciliationRouter);
+
+// Initialize sample collection routes
+const { router: sampleCollectionRouter, initializeSampleCollectionService } = require('./routes/sampleCollection');
+initializeSampleCollectionService(db);
+app.use('/api/sample-collection', sampleCollectionRouter);
+
 app.use('/api/security', require('./routes/security'));
 
 // Health check endpoint
@@ -43,7 +74,15 @@ app.get('/api/health', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
+  // Handle JSON parsing errors specifically
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid JSON format in request body'
+    });
+  }
+  
   console.error('RapidCare API Error:', err.stack);
   res.status(500).json({ 
     error: 'We\'re experiencing technical difficulties. Our team has been notified.',
@@ -64,12 +103,27 @@ if (process.env.NODE_ENV !== 'test') {
   reconciliationScheduler = new ReconciliationScheduler(db);
   reconciliationScheduler.startAll();
   
-  app.listen(PORT, () => {
-    console.log(`🚀 RapidCare API server running on port ${PORT}`);
-    console.log(`🏥 Emergency Care, Delivered Fast - Ready to serve critical medical needs`);
-    console.log(`📊 Health check available at: http://localhost:${PORT}/api/health`);
-    console.log(`💰 Financial reconciliation scheduler started`);
-  });
+  // Start server with graceful EADDRINUSE fallback
+  const startServer = (portToUse) => {
+    const server = app.listen(portToUse, () => {
+      console.log(`🚀 RapidCare API server running on port ${portToUse}`);
+      console.log(`🏥 Emergency Care, Delivered Fast - Ready to serve critical medical needs`);
+      console.log(`📊 Health check available at: http://localhost:${portToUse}/api/health`);
+      console.log(`💰 Financial reconciliation scheduler started`);
+    });
+
+    server.on('error', (err) => {
+      if (err && err.code === 'EADDRINUSE') {
+        const nextPort = Number(portToUse) + 1;
+        console.warn(`⚠️  Port ${portToUse} in use, retrying on ${nextPort}...`);
+        startServer(nextPort);
+      } else {
+        console.error('Failed to start server:', err);
+      }
+    });
+  };
+
+  startServer(PORT);
 
   // Graceful shutdown
   process.on('SIGTERM', () => {

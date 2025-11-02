@@ -3,6 +3,7 @@ const ResourceManagementService = require('../services/resourceManagementService
 const BookingApprovalService = require('../services/bookingApprovalService');
 const PollingService = require('../services/pollingService');
 const AnalyticsService = require('../services/analyticsService');
+const UserService = require('../services/userService');
 
 // Get all hospitals (public)
 exports.getAllHospitals = async (req, res) => {
@@ -404,6 +405,90 @@ exports.getResourceHistory = async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching resource history:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch resource history'
+    });
+  }
+};
+
+// Public-safe resource history endpoint: returns empty data when unauthorized
+exports.getResourceHistoryPublic = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      resourceType,
+      changeType,
+      startDate,
+      endDate,
+      limit = 50,
+      offset = 0
+    } = req.query;
+
+    const options = {
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    };
+
+    if (resourceType) options.resourceType = resourceType;
+    if (changeType) options.changeType = changeType;
+    if (startDate) options.startDate = new Date(startDate);
+    if (endDate) options.endDate = new Date(endDate);
+
+    const user = req.user;
+    const hospitalId = parseInt(id);
+
+    const isAuthorized = !!user && (
+      (user.userType === 'admin') ||
+      (user.userType === 'hospital-authority' && (user.hospitalId === hospitalId))
+    );
+
+    if (!isAuthorized) {
+      return res.json({
+        success: true,
+        data: [],
+        totalCount: 0,
+        pagination: {
+          limit: options.limit,
+          offset: options.offset,
+          hasMore: false
+        },
+        filters: {
+          resourceType,
+          changeType,
+          startDate,
+          endDate
+        }
+      });
+    }
+
+    const result = await ResourceManagementService.getResourceHistory(hospitalId, options);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.message
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: result.data.history,
+      totalCount: result.data.totalCount,
+      pagination: {
+        limit: options.limit,
+        offset: options.offset,
+        hasMore: result.data.history.length === options.limit
+      },
+      filters: {
+        resourceType,
+        changeType,
+        startDate,
+        endDate
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching public-safe resource history:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to fetch resource history'

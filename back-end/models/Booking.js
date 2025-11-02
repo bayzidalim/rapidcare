@@ -3,35 +3,57 @@ const BookingStatusHistory = require('./BookingStatusHistory');
 
 class Booking {
   static create(bookingData) {
-    const stmt = db.prepare(`
-      INSERT INTO bookings (
-        userId, hospitalId, resourceType, patientName, patientAge, 
-        patientGender, emergencyContactName, emergencyContactPhone, 
-        emergencyContactRelationship, medicalCondition, urgency, 
-        surgeonId, scheduledDate, estimatedDuration, paymentAmount
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
-      bookingData.userId,
-      bookingData.hospitalId,
-      bookingData.resourceType,
-      bookingData.patientName,
-      bookingData.patientAge,
-      bookingData.patientGender,
-      bookingData.emergencyContactName,
-      bookingData.emergencyContactPhone,
-      bookingData.emergencyContactRelationship,
-      bookingData.medicalCondition,
-      bookingData.urgency,
-      bookingData.surgeonId,
-      bookingData.scheduledDate,
-      bookingData.estimatedDuration,
-      bookingData.paymentAmount
-    );
-    
-    return result.lastInsertRowid;
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO bookings (
+          userId, hospitalId, resourceType, patientName, patientAge, 
+          patientGender, emergencyContactName, emergencyContactPhone, 
+          emergencyContactRelationship, medicalCondition, urgency, 
+          surgeonId, scheduledDate, estimatedDuration, paymentAmount,
+          rapidAssistance, rapidAssistantName, rapidAssistantPhone
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      // Ensure all values are properly defined
+      const values = [
+        bookingData.userId || null,
+        bookingData.hospitalId || null,
+        bookingData.resourceType || '',
+        bookingData.patientName || '',
+        bookingData.patientAge || 0,
+        bookingData.patientGender || '',
+        bookingData.emergencyContactName || '',
+        bookingData.emergencyContactPhone || '',
+        bookingData.emergencyContactRelationship || '',
+        bookingData.medicalCondition || '',
+        bookingData.urgency || 'medium',
+        bookingData.surgeonId || null,
+        bookingData.scheduledDate || '',
+        bookingData.estimatedDuration || 0,
+        bookingData.paymentAmount || 0,
+        bookingData.rapidAssistance ? 1 : 0, // Convert boolean to number for SQLite
+        bookingData.rapidAssistantName || null,
+        bookingData.rapidAssistantPhone || null
+      ];
+      
+      // Debug: Check for undefined values
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] === undefined) {
+          console.error(`Undefined value at index ${i} in values array`);
+          console.error('All values:', values);
+          throw new Error(`Undefined value at index ${i} in values array`);
+        }
+      }
+      
+      const result = stmt.run(...values);
+      
+      return result.lastInsertRowid;
+    } catch (error) {
+      console.error('Error creating booking in database:', error);
+      console.error('Booking data:', bookingData);
+      throw error;
+    }
   }
 
   static findById(id) {
@@ -306,14 +328,6 @@ class Booking {
     return true;
   }
 
-  /**
-   * Cancel a booking
-   * @param {number} id - Booking ID
-   * @param {number} cancelledBy - User who cancelled the booking
-   * @param {string} reason - Reason for cancellation
-   * @param {string} notes - Additional notes
-   * @returns {boolean} Success status
-   */
   static cancel(id, cancelledBy, reason, notes = null) {
     const transaction = db.transaction(() => {
       // Get current booking
@@ -330,10 +344,12 @@ class Booking {
       const stmt = db.prepare(`
         UPDATE bookings 
         SET status = 'cancelled', 
+            declineReason = ?,
+            authorityNotes = ?,
             updatedAt = CURRENT_TIMESTAMP
         WHERE id = ?
       `);
-      stmt.run(id);
+      stmt.run(reason, notes, id);
 
       // Log the cancellation
       BookingStatusHistory.logCancellation(id, cancelledBy, reason, notes);
@@ -383,7 +399,7 @@ class Booking {
    * @param {Object} options - Query options
    * @returns {Array} Bookings with their status history
    */
-  static getWithHistory(hospitalId, options = {}) {
+  static getWithHistory(hospitalId) {
     const bookings = this.getByHospital(hospitalId);
     
     return bookings.map(booking => ({

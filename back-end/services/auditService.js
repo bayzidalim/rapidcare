@@ -131,7 +131,7 @@ class AuditService {
           if (!userCheck) {
             validUserId = null; // Set to null if user doesn't exist
           }
-        } catch (error) {
+        } catch {
           validUserId = null; // Set to null if users table doesn't exist or other error
         }
       }

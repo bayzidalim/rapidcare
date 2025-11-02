@@ -159,10 +159,28 @@ const seedDatabase = async () => {
     // Insert sample hospitals
     const hospitals = [];
     for (const hospitalData of sampleHospitals) {
-      const hospital = HospitalService.create(hospitalData);
-      hospitals.push(hospital);
+        try {
+            const existingHospital = HospitalService.search({ q: hospitalData.name, city: hospitalData.address.city });
+            if (existingHospital.length > 0) {
+                hospitals.push(existingHospital[0]);
+                console.log(`Hospital "${hospitalData.name}" in "${hospitalData.address.city}" already exists, using existing hospital.`);
+            } else {
+                const hospital = HospitalService.create(hospitalData);
+                hospitals.push(hospital);
+            }
+        } catch (error) {
+            if (error.message.includes('already exists')) {
+                const existingHospital = HospitalService.search({ q: hospitalData.name, city: hospitalData.address.city });
+                if (existingHospital.length > 0) {
+                    hospitals.push(existingHospital[0]);
+                    console.log(`Hospital "${hospitalData.name}" in "${hospitalData.address.city}" already exists, using existing hospital.`);
+                }
+            } else {
+                throw error;
+            }
+        }
     }
-    console.log(`Inserted ${hospitals.length} hospitals`);
+    console.log(`Processed ${hospitals.length} hospitals`);
 
     // Create sample users
     const sampleUsers = [

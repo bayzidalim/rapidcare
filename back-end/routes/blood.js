@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const bloodController = require('../controllers/bloodController');
-const { authenticate, authorizeUserType, authorizePermission } = require('../middleware/auth');
+const { authenticate, authorizePermission } = require('../middleware/auth');
 
 // POST /api/blood/request - Create blood request (authenticated users)
 router.post('/request', authenticate, bloodController.createBloodRequest);

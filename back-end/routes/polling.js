@@ -3,8 +3,7 @@ const router = express.Router();
 const PollingService = require('../services/pollingService');
 const { 
   authenticate, 
-  authorizeUserType, 
-  requireAdmin 
+  authorizeUserType 
 } = require('../middleware/auth');
 
 // GET /api/polling/resources - Get system-wide resource updates

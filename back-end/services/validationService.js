@@ -111,8 +111,8 @@ class ValidationService {
 
   // Validate phone number format (basic)
   static isValidPhone(phone) {
-    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-    return phoneRegex.test(phone.replace(/[\s\-\(\)]/g, ''));
+    const phoneRegex = /^[+]?[1-9][\d]{0,15}$/;
+    return phoneRegex.test(phone.replace(/[\s-()]/g, ''));
   }
 
   // Sanitize input data
@@ -187,6 +187,34 @@ class ValidationService {
       isValid: errors.length === 0,
       errors
     };
+  }
+
+  // Validate rapid assistance eligibility
+  static validateRapidAssistanceEligibility(patientAge, rapidAssistance) {
+    if (!rapidAssistance) {
+      return { isValid: true, errors: [] };
+    }
+
+    const errors = [];
+
+    // Check if patient age is provided and valid
+    if (patientAge === undefined || patientAge === null) {
+      errors.push('Patient age is required to determine Rapid Assistance eligibility');
+    } else if (typeof patientAge !== 'number' || isNaN(patientAge)) {
+      errors.push('Invalid patient age detected');
+    } else if (patientAge < 60) {
+      errors.push('Invalid Rapid Assistance selection detected. Please ensure you meet the age requirements. Note: Rapid Assistance is exclusively available for patients aged 60 and above to ensure appropriate care for senior citizens.');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  // Calculate rapid assistance charge
+  static calculateRapidAssistanceCharge(rapidAssistance) {
+    return rapidAssistance ? 200 : 0;
   }
 }
 

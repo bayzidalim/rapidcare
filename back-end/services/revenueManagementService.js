@@ -87,9 +87,18 @@ class RevenueManagementService {
         });
       }
 
-      // Update admin balance with error recovery
+      // Update admin balance with error recovery using AdminBalanceService
       try {
-        await this.updateAdminBalanceWithValidation(serviceCharge, transactionId);
+        const AdminBalanceService = require('./adminBalanceService');
+        const adminResult = await AdminBalanceService.addServiceCharge(
+          serviceCharge, 
+          transactionId, 
+          `Service charge from booking transaction ${transactionId} - Hospital: ${hospitalId}`
+        );
+        
+        if (!adminResult.success) {
+          throw new Error(`Admin balance update failed: ${adminResult.error}`);
+        }
       } catch (adminError) {
         const error = new Error(`Admin balance update failed: ${adminError.message}`);
         return ErrorHandler.handleRevenueDistributionError(error, {

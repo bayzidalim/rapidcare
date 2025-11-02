@@ -357,4 +357,4 @@ exports.deactivateUser = async (req, res) => {
       error: error.message
     });
   }
-}; 
+};

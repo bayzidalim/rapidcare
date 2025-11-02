@@ -6,6 +6,7 @@ A Node.js + Express.js backend API for the RapidCare emergency medical platform 
 
 - Hospital resource management (beds, ICUs, operation theatres)
 - Real-time booking system
+- Sample collection service for medical tests (accessible without authentication)
 - Blood donation requests and donor matching
 - JWT Authentication and Authorization
 - Role-based access control (Users & Hospital Authorities)
@@ -83,6 +84,17 @@ A Node.js + Express.js backend API for the RapidCare emergency medical platform 
 - `POST /api/blood/requests/:id/match` - Match donor to blood request (authenticated users)
 - `PUT /api/blood/requests/:id/donors/:donorId` - Update donor status (authenticated users)
 
+### Sample Collection
+
+- `GET /api/sample-collection/hospitals` - Get hospitals offering collection services (public)
+- `GET /api/sample-collection/test-types` - Get all available test types (public)
+- `GET /api/sample-collection/hospitals/:hospitalId/test-types` - Get test types for hospital (public)
+- `POST /api/sample-collection/calculate-pricing` - Calculate test pricing (public)
+- `POST /api/sample-collection/submit-request` - Submit collection request (public, optional auth)
+- `GET /api/sample-collection/requests` - Get user's requests (authenticated users)
+- `GET /api/sample-collection/requests/:requestId` - Get specific request (authenticated users)
+- `PUT /api/sample-collection/requests/:requestId/cancel` - Cancel request (authenticated users)
+
 ## Database Schema
 
 ### Users Table
@@ -114,6 +126,12 @@ A Node.js + Express.js backend API for the RapidCare emergency medical platform 
 - Blood type and units needed
 - Hospital and patient details
 - Donor matching system
+
+### Sample Collection Tables
+- **Sample Collection Requests**: Collection requests with optional user association
+- **Test Types**: Available medical tests with pricing
+- **Collection Agents**: Agents assigned to collection requests
+- **Hospital Test Pricing**: Test pricing per hospital
 
 ### Additional Tables
 - **Surgeons**: Hospital surgeons with schedules

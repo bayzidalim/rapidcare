@@ -9,12 +9,15 @@ function up() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       entity_type VARCHAR(50) NOT NULL,
       entity_id INTEGER NOT NULL,
-      action VARCHAR(50) NOT NULL,
+      event_type VARCHAR(100) NOT NULL,
       user_id INTEGER,
       user_type VARCHAR(50),
       old_data TEXT,
       new_data TEXT,
-      metadata TEXT,
+      changes TEXT, -- JSON string of changes
+      metadata TEXT, -- JSON string of additional data
+      ip_address VARCHAR(45),
+      user_agent TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     )
@@ -33,7 +36,7 @@ function up() {
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_audit_action 
-    ON audit_trail(action, created_at DESC)
+    ON audit_trail(event_type, created_at DESC)
   `);
 
   console.log('Audit trail table created successfully');

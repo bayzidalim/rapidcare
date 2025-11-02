@@ -1,12 +1,6 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const db = require('../config/database');
 
-// Database connection
-const dbPath = path.join(__dirname, '..', 'database.sqlite');
-const db = new Database(dbPath);
-
-// Migration: Add hospital approval system columns
-const migrateHospitalApprovalSystem = () => {
+function up() {
   console.log('Starting hospital approval system migration...');
 
   try {
@@ -96,12 +90,10 @@ const migrateHospitalApprovalSystem = () => {
     console.error('❌ Migration failed:', error.message);
     throw error;
   }
-};
-
-// Run migration if called directly
-if (require.main === module) {
-  migrateHospitalApprovalSystem();
-  db.close();
 }
 
-module.exports = { migrateHospitalApprovalSystem };
+function down() {
+  console.log('Down migration for 001_hospital_approval_system not implemented');
+}
+
+module.exports = { up, down };

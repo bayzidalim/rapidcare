@@ -3,6 +3,9 @@ const router = express.Router();
 const adminController = require('../controllers/adminController');
 const { authenticate, authorizeUserType } = require('../middleware/auth');
 
+// Import admin balance routes
+const adminBalanceRoutes = require('./adminBalance');
+
 // Apply authentication and admin authorization to all admin routes
 router.use(authenticate);
 router.use(authorizeUserType(['admin']));
@@ -39,5 +42,8 @@ router.get('/stats', adminController.getStats);
 // Financial Analytics Routes
 router.get('/financials', adminController.getPlatformFinancials);
 router.get('/service-charges', adminController.getServiceChargeAnalytics);
+
+// Admin Balance Routes
+router.use('/balance', adminBalanceRoutes);
 
 module.exports = router; 

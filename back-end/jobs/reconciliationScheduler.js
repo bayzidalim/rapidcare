@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const FinancialReconciliationService = require('../services/financialReconciliationService');
-const { handleError } = require('../utils/errorHandler');
+const ErrorHandler = require('../utils/errorHandler');
 
 class ReconciliationScheduler {
   constructor(database) {
@@ -22,8 +22,9 @@ class ReconciliationScheduler {
           console.warn(`Discrepancies found: ${result.discrepancies.length} issues detected`);
         }
       } catch (error) {
-        const handledError = handleError(error, 'Automated daily reconciliation failed');
-        console.error('Daily reconciliation error:', handledError.message);
+        const handledError = ErrorHandler.createGenericError(`Automated daily reconciliation failed: ${error.message}`);
+        console.error('Daily reconciliation error:', handledError.error.message);
+        ErrorHandler.logError(handledError, { context: 'automated_daily_reconciliation' });
       }
     }, {
       scheduled: false,
@@ -56,8 +57,9 @@ class ReconciliationScheduler {
           console.log('Financial health check passed');
         }
       } catch (error) {
-        const handledError = handleError(error, 'Financial health monitoring failed');
-        console.error('Health monitoring error:', handledError.message);
+        const handledError = ErrorHandler.createGenericError(`Financial health monitoring failed: ${error.message}`);
+        console.error('Health monitoring error:', handledError.error.message);
+        ErrorHandler.logError(handledError, { context: 'financial_health_monitoring' });
       }
     }, {
       scheduled: false,
@@ -99,8 +101,9 @@ class ReconciliationScheduler {
           console.warn(`Transaction integrity issues found: ${issuesFound} out of ${recentTransactions.length} transactions`);
         }
       } catch (error) {
-        const handledError = handleError(error, 'Transaction integrity verification failed');
-        console.error('Integrity verification error:', handledError.message);
+        const handledError = ErrorHandler.createGenericError(`Transaction integrity verification failed: ${error.message}`);
+        console.error('Integrity verification error:', handledError.error.message);
+        ErrorHandler.logError(handledError, { context: 'transaction_integrity_verification' });
       }
     }, {
       scheduled: false,
@@ -169,8 +172,8 @@ class ReconciliationScheduler {
     
     const query = `
       SELECT * FROM transactions 
-      WHERE created_at >= ? 
-      ORDER BY created_at DESC
+      WHERE createdAt >= ? 
+      ORDER BY createdAt DESC
     `;
     return this.reconciliationService.db.prepare(query).all(cutoffTime.toISOString());
   }
@@ -185,8 +188,9 @@ class ReconciliationScheduler {
       console.log('Manual reconciliation completed:', result);
       return result;
     } catch (error) {
-      const handledError = handleError(error, 'Manual reconciliation failed');
-      console.error('Manual reconciliation error:', handledError.message);
+      const handledError = ErrorHandler.createGenericError(`Manual reconciliation failed: ${error.message}`);
+      console.error('Manual reconciliation error:', handledError.error.message);
+      ErrorHandler.logError(handledError, { context: 'manual_daily_reconciliation' });
       throw handledError;
     }
   }
@@ -201,8 +205,9 @@ class ReconciliationScheduler {
       console.log('Manual health monitoring completed:', result);
       return result;
     } catch (error) {
-      const handledError = handleError(error, 'Manual health monitoring failed');
-      console.error('Manual health monitoring error:', handledError.message);
+      const handledError = ErrorHandler.createGenericError(`Manual health monitoring failed: ${error.message}`);
+      console.error('Manual health monitoring error:', handledError.error.message);
+      ErrorHandler.logError(handledError, { context: 'manual_health_monitoring' });
       throw handledError;
     }
   }

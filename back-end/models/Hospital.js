@@ -412,6 +412,37 @@ class Hospital {
     const result = stmt.get(...params);
     return result.count;
   }
+
+  /**
+   * Update hospital rating based on average of reviews
+   * @param {number} hospitalId - Hospital ID
+   * @returns {number|null} Updated rating or null on error
+   */
+  static updateRating(hospitalId) {
+    try {
+      // Calculate average rating from reviews
+      const stats = db.prepare(`
+        SELECT AVG(rating) as averageRating
+        FROM reviews
+        WHERE hospitalId = ? AND isActive = 1
+      `).get(hospitalId);
+
+      const rating = stats?.averageRating || 0;
+
+      // Update hospital rating
+      const stmt = db.prepare(`
+        UPDATE hospitals 
+        SET rating = ?, updatedAt = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
+      
+      stmt.run(rating, hospitalId);
+      return rating;
+    } catch (error) {
+      console.error('Error updating hospital rating:', error);
+      return null;
+    }
+  }
 }
 
 module.exports = Hospital; 

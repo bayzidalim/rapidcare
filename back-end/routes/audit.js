@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auditController = require('../controllers/auditController');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 
 // GET /api/audit/entity/:entityType/:entityId - Get audit trail for entity (admin only)
 router.get('/entity/:entityType/:entityId', authenticate, auditController.getEntityAuditTrail);

@@ -891,6 +891,14 @@ class HospitalService {
     `);
     userStmt.run(hospitalId, authorityUserId);
 
+    // Update hospital_authorities table to link the user to the hospital
+    const authorityStmt = db.prepare(`
+      UPDATE hospital_authorities 
+      SET hospitalId = ?
+      WHERE userId = ?
+    `);
+    authorityStmt.run(hospitalId, authorityUserId);
+
     // Insert services
     if (hospitalData.services && hospitalData.services.length > 0) {
       const serviceStmt = db.prepare(`

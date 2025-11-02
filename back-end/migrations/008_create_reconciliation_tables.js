@@ -1,6 +1,6 @@
-const Database = require('better-sqlite3');
+const db = require('../config/database');
 
-function createReconciliationTables(db) {
+function up() {
   // Reconciliation records table
   db.exec(`
     CREATE TABLE IF NOT EXISTS reconciliation_records (
@@ -54,22 +54,7 @@ function createReconciliationTables(db) {
     )
   `);
 
-  // Audit trail table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS audit_trail (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      event_type VARCHAR(100) NOT NULL,
-      entity_type VARCHAR(50) NOT NULL,
-      entity_id VARCHAR(100) NOT NULL,
-      user_id INTEGER,
-      changes TEXT, -- JSON string of changes
-      metadata TEXT, -- JSON string of additional data
-      ip_address VARCHAR(45),
-      user_agent TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    )
-  `);
+
 
   // Financial health monitoring table
   db.exec(`
@@ -106,4 +91,8 @@ function createReconciliationTables(db) {
   console.log('Reconciliation tables created successfully');
 }
 
-module.exports = { createReconciliationTables };
+function down() {
+  console.log('Down migration for 008_create_reconciliation_tables not implemented');
+}
+
+module.exports = { up, down };

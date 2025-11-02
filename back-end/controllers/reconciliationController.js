@@ -1,6 +1,6 @@
 const FinancialReconciliationService = require('../services/financialReconciliationService');
-const { handleError, createError } = require('../utils/errorHandler');
-const { formatCurrency } = require('../utils/currencyUtils');
+const ErrorHandler = require('../utils/errorHandler');
+
 
 class ReconciliationController {
   constructor(database) {
@@ -23,7 +23,7 @@ class ReconciliationController {
         message: 'Daily reconciliation completed successfully'
       });
     } catch (error) {
-      const handledError = handleError(error, 'Failed to perform daily reconciliation');
+      const handledError = ErrorHandler.handleError(error, 'Failed to perform daily reconciliation');
       res.status(handledError.statusCode || 500).json({
         success: false,
         error: handledError.message
@@ -39,7 +39,7 @@ class ReconciliationController {
       const { transactionId } = req.params;
       
       if (!transactionId) {
-        throw createError('Transaction ID is required', 400);
+        throw ErrorHandler.createError('Transaction ID is required', 400);
       }
 
       const result = await this.reconciliationService.verifyTransactionIntegrity(transactionId);
@@ -49,7 +49,7 @@ class ReconciliationController {
         data: result
       });
     } catch (error) {
-      const handledError = handleError(error, 'Failed to verify transaction integrity');
+      const handledError = ErrorHandler.handleError(error, 'Failed to verify transaction integrity');
       res.status(handledError.statusCode || 500).json({
         success: false,
         error: handledError.message
@@ -65,14 +65,14 @@ class ReconciliationController {
       const { startDate, endDate, format = 'json' } = req.query;
       
       if (!startDate || !endDate) {
-        throw createError('Start date and end date are required', 400);
+        throw ErrorHandler.createError('Start date and end date are required', 400);
       }
 
       const start = new Date(startDate);
       const end = new Date(endDate);
       
       if (start >= end) {
-        throw createError('Start date must be before end date', 400);
+        throw ErrorHandler.createError('Start date must be before end date', 400);
       }
 
       const auditTrail = await this.reconciliationService.generateAuditTrail(start, end);
@@ -89,7 +89,7 @@ class ReconciliationController {
         });
       }
     } catch (error) {
-      const handledError = handleError(error, 'Failed to generate audit trail');
+      const handledError = ErrorHandler.handleError(error, 'Failed to generate audit trail');
       res.status(handledError.statusCode || 500).json({
         success: false,
         error: handledError.message
@@ -104,13 +104,13 @@ class ReconciliationController {
     try {
       // Check if user is admin
       if (req.user.role !== 'admin') {
-        throw createError('Insufficient permissions', 403);
+        throw ErrorHandler.createError('Insufficient permissions', 403);
       }
 
       const { accountId, currentBalance, correctBalance, reason, evidence } = req.body;
       
       if (!accountId || !currentBalance || !correctBalance || !reason) {
-        throw createError('Missing required fields', 400);
+        throw ErrorHandler.createError('Missing required fields', 400);
       }
 
       const result = await this.reconciliationService.correctBalance({
@@ -127,7 +127,7 @@ class ReconciliationController {
         message: 'Balance correction applied successfully'
       });
     } catch (error) {
-      const handledError = handleError(error, 'Failed to correct balance');
+      const handledError = ErrorHandler.handleError(error, 'Failed to correct balance');
       res.status(handledError.statusCode || 500).json({
         success: false,
         error: handledError.message
@@ -147,7 +147,7 @@ class ReconciliationController {
         data: healthStatus
       });
     } catch (error) {
-      const handledError = handleError(error, 'Failed to get financial health status');
+      const handledError = ErrorHandler.handleError(error, 'Failed to get financial health status');
       res.status(handledError.statusCode || 500).json({
         success: false,
         error: handledError.message
@@ -178,7 +178,7 @@ class ReconciliationController {
         data: history
       });
     } catch (error) {
-      const handledError = handleError(error, 'Failed to get reconciliation history');
+      const handledError = ErrorHandler.handleError(error, 'Failed to get reconciliation history');
       res.status(handledError.statusCode || 500).json({
         success: false,
         error: handledError.message
@@ -204,7 +204,7 @@ class ReconciliationController {
         data: discrepancies
       });
     } catch (error) {
-      const handledError = handleError(error, 'Failed to get outstanding discrepancies');
+      const handledError = ErrorHandler.handleError(error, 'Failed to get outstanding discrepancies');
       res.status(handledError.statusCode || 500).json({
         success: false,
         error: handledError.message
@@ -221,7 +221,7 @@ class ReconciliationController {
       const { resolutionNotes } = req.body;
       
       if (!discrepancyId) {
-        throw createError('Discrepancy ID is required', 400);
+        throw ErrorHandler.createError('Discrepancy ID is required', 400);
       }
 
       const result = await this.reconciliationService.resolveDiscrepancy(
@@ -236,7 +236,7 @@ class ReconciliationController {
         message: 'Discrepancy resolved successfully'
       });
     } catch (error) {
-      const handledError = handleError(error, 'Failed to resolve discrepancy');
+      const handledError = ErrorHandler.handleError(error, 'Failed to resolve discrepancy');
       res.status(handledError.statusCode || 500).json({
         success: false,
         error: handledError.message

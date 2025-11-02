@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const HospitalService = require('./hospitalService');
+const ValidationService = require('./validationService');
 
 class BookingService {
   // Create new booking
@@ -18,15 +19,37 @@ class BookingService {
     // Calculate payment amount with 30% markup
     const baseAmount = this.getBaseAmount(bookingData.resourceType, bookingData.estimatedDuration);
     const markup = baseAmount * 0.3;
-    const totalAmount = baseAmount + markup;
+    let totalAmount = baseAmount + markup;
+
+    let rapidAssistanceCharge = 0;
+    let rapidAssistantName = null;
+    let rapidAssistantPhone = null;
+
+    if (bookingData.rapidAssistance) {
+      // Validate rapid assistance eligibility
+      const validation = ValidationService.validateRapidAssistanceEligibility(bookingData.patientAge, bookingData.rapidAssistance);
+      if (!validation.isValid) {
+        throw new Error(validation.errors[0]);
+      }
+
+      // Set rapid assistance charge
+      rapidAssistanceCharge = ValidationService.calculateRapidAssistanceCharge(bookingData.rapidAssistance);
+      totalAmount += rapidAssistanceCharge;
+
+      // Assign random assistant
+      const assistantInfo = this.assignRapidAssistant();
+      rapidAssistantName = assistantInfo.name;
+      rapidAssistantPhone = assistantInfo.phone;
+    }
 
     const stmt = db.prepare(`
       INSERT INTO bookings (
         userId, hospitalId, resourceType, patientName, patientAge, patientGender,
         emergencyContactName, emergencyContactPhone, emergencyContactRelationship,
         medicalCondition, urgency, surgeonId, scheduledDate, estimatedDuration,
-        status, paymentAmount, paymentStatus, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, paymentAmount, paymentStatus, notes, rapidAssistance, rapidAssistanceCharge,
+        rapidAssistantName, rapidAssistantPhone
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -47,15 +70,11 @@ class BookingService {
       'pending',
       totalAmount,
       'pending',
-      bookingData.notes
-    );
-
-    // Update resource availability
-    HospitalService.updateResourceAvailability(
-      bookingData.hospitalId,
-      bookingData.resourceType,
-      -1,
-      bookingData.userId
+      bookingData.notes,
+      bookingData.rapidAssistance ? 1 : 0,
+      rapidAssistanceCharge,
+      rapidAssistantName,
+      rapidAssistantPhone
     );
 
     return this.getById(result.lastInsertRowid);
@@ -184,14 +203,14 @@ class BookingService {
     
     return stmt.run(paymentStatus, paymentMethod, transactionId, id);
   }
-
-  // Cancel booking
+      
+      // Cancel booking
   static cancel(id) {
     const booking = this.getById(id);
     if (!booking) {
       throw new Error('Booking not found');
     }
-
+    
     if (booking.status === 'cancelled') {
       throw new Error('Booking is already cancelled');
     }
@@ -218,7 +237,7 @@ class BookingService {
   // Get booking statistics
   static getStats() {
     const stats = db.prepare(`
-      SELECT 
+        SELECT 
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as confirmed,
         COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
@@ -226,7 +245,7 @@ class BookingService {
         COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
         SUM(paymentAmount) as totalRevenue,
         AVG(paymentAmount) as averageAmount
-      FROM bookings
+        FROM bookings
     `).get();
 
     return {
@@ -271,6 +290,80 @@ class BookingService {
       }
     }));
   }
+
+  // Update rapid assistance details for a booking
+  static updateRapidAssistance(id, rapidAssistance, rapidAssistanceCharge = 0) {
+    const booking = this.getById(id);
+    if (!booking) {
+      throw new Error('Booking not found');
+    }
+
+    let rapidAssistantName = null;
+    let rapidAssistantPhone = null;
+
+    if (rapidAssistance) {
+      // Validate rapid assistance eligibility
+      const validation = ValidationService.validateRapidAssistanceEligibility(booking.patientAge, rapidAssistance);
+      if (!validation.isValid) {
+        throw new Error(validation.errors[0]);
+      }
+
+      // Assign assistant if not already assigned
+      if (!booking.rapidAssistantName) {
+        const assistantInfo = this.assignRapidAssistant();
+        rapidAssistantName = assistantInfo.name;
+        rapidAssistantPhone = assistantInfo.phone;
+      } else {
+        rapidAssistantName = booking.rapidAssistantName;
+        rapidAssistantPhone = booking.rapidAssistantPhone;
+      }
+    }
+
+    const stmt = db.prepare(`
+      UPDATE bookings 
+      SET rapidAssistance = ?, rapidAssistanceCharge = ?, rapidAssistantName = ?, rapidAssistantPhone = ?, updatedAt = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    
+    stmt.run(rapidAssistance ? 1 : 0, rapidAssistanceCharge, rapidAssistantName, rapidAssistantPhone, id);
+    return this.getById(id);
+  }
+
+  // Generate random Bangladeshi assistant name and phone number
+  static assignRapidAssistant() {
+    // Random Bangladeshi first names
+    const firstNames = [
+      'Ahmed', 'Mohammad', 'Abdul', 'Md', 'Shah', 'Karim', 'Rahman', 'Hassan', 'Ali', 'Omar',
+      'Fatima', 'Rashida', 'Nasreen', 'Salma', 'Rehana', 'Ruma', 'Shahida', 'Sultana', 'Bilkis', 'Rokeya',
+      'Aminul', 'Rafiqul', 'Shamsul', 'Nurul', 'Mizanur', 'Abdur', 'Motiur', 'Shahjahan', 'Golam', 'Delwar'
+    ];
+
+    // Random Bangladeshi last names
+    const lastNames = [
+      'Islam', 'Rahman', 'Ahmed', 'Hassan', 'Ali', 'Khan', 'Hossain', 'Uddin', 'Alam', 'Sheikh',
+      'Begum', 'Khatun', 'Akter', 'Parvin', 'Sultana', 'Bibi', 'Nessa', 'Banu', 'Yasmin', 'Rashid',
+      'Miah', 'Sarkar', 'Mondal', 'Das', 'Roy', 'Chowdhury', 'Talukder', 'Bepari', 'Molla', 'Sikder'
+    ];
+
+    // Generate random name
+    const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+    const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+    const fullName = `${firstName} ${lastName}`;
+
+    // Generate random Bangladeshi phone number
+    // Format: +880 1XXX-XXXXXX (Bangladesh mobile numbers start with +880 1)
+    const operators = ['17', '19', '15', '18', '16', '13']; // Common BD mobile operators
+    const operator = operators[Math.floor(Math.random() * operators.length)];
+    const randomDigits = Math.floor(Math.random() * 100000000).toString().padStart(8, '0');
+    const phoneNumber = `+880${operator}${randomDigits}`;
+
+      return {
+      name: fullName,
+      phone: phoneNumber
+    };
+  }
+
+
 }
 
-module.exports = BookingService; 
+module.exports = BookingService;

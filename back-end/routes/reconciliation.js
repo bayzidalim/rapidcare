@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const FinancialReconciliationService = require('../services/financialReconciliationService');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { handleError } = require('../utils/errorHandler');
+const ErrorHandler = require('../utils/errorHandler');
 const { formatTaka, parseTaka, isValidTakaAmount } = require('../utils/currencyUtils');
 
 // Initialize reconciliation service
@@ -36,7 +36,7 @@ router.get('/daily/:date', authenticate, requireAdmin, async (req, res) => {
       data: reconciliationRecord
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to get daily reconciliation');
+    const handledError = ErrorHandler.handleError(error, 'Failed to get daily reconciliation');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -62,7 +62,7 @@ router.post('/daily/trigger', authenticate, requireAdmin, async (req, res) => {
       data: result
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to trigger daily reconciliation');
+    const handledError = ErrorHandler.handleError(error, 'Failed to trigger daily reconciliation');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -96,7 +96,7 @@ router.get('/history', authenticate, requireAdmin, async (req, res) => {
       pagination: result.pagination
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to get reconciliation history');
+    const handledError = ErrorHandler.handleError(error, 'Failed to get reconciliation history');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -129,7 +129,7 @@ router.get('/discrepancies', authenticate, requireAdmin, async (req, res) => {
       data: formattedDiscrepancies
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to get discrepancies');
+    const handledError = ErrorHandler.handleError(error, 'Failed to get discrepancies');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -160,7 +160,7 @@ router.put('/discrepancies/:id/resolve', authenticate, requireAdmin, async (req,
       data: result
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to resolve discrepancy');
+    const handledError = ErrorHandler.handleError(error, 'Failed to resolve discrepancy');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -180,7 +180,7 @@ router.post('/transaction/:id/verify', authenticate, requireAdmin, async (req, r
       data: verification
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to verify transaction integrity');
+    const handledError = ErrorHandler.handleError(error, 'Failed to verify transaction integrity');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -223,7 +223,7 @@ router.post('/audit-trail', authenticate, requireAdmin, async (req, res) => {
       });
     }
   } catch (error) {
-    const handledError = handleError(error, 'Failed to generate audit trail');
+    const handledError = ErrorHandler.handleError(error, 'Failed to generate audit trail');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -272,7 +272,7 @@ router.post('/balance/correct', authenticate, requireAdmin, async (req, res) => 
       }
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to correct balance');
+    const handledError = ErrorHandler.handleError(error, 'Failed to correct balance');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -290,7 +290,7 @@ router.get('/health', authenticate, requireAdmin, async (req, res) => {
       data: healthStatus
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to get financial health status');
+    const handledError = ErrorHandler.handleError(error, 'Failed to get financial health status');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -324,7 +324,7 @@ router.get('/health/history', authenticate, requireAdmin, async (req, res) => {
       data: formattedHistory
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to get health history');
+    const handledError = ErrorHandler.handleError(error, 'Failed to get health history');
     res.status(500).json({ error: handledError.message });
   }
 });
@@ -371,7 +371,7 @@ router.get('/corrections/history', authenticate, requireAdmin, async (req, res) 
       }
     });
   } catch (error) {
-    const handledError = handleError(error, 'Failed to get correction history');
+    const handledError = ErrorHandler.handleError(error, 'Failed to get correction history');
     res.status(500).json({ error: handledError.message });
   }
 });

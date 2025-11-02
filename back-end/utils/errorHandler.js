@@ -553,6 +553,24 @@ class ErrorHandler {
   }
 
   /**
+   * Simple error handler for backward compatibility
+   * Returns error object with statusCode and message properties
+   */
+  static handleError(error, customMessage = null) {
+    const message = customMessage || error.message || 'An unexpected error occurred';
+    const statusCode = error.statusCode || error.status || 500;
+    
+    return {
+      message,
+      statusCode,
+      originalError: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+
+
+  /**
    * Validate and sanitize Taka amounts
    */
   static validateTakaAmount(amount, context = {}) {

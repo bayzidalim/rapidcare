@@ -144,6 +144,9 @@ const initDatabase = () => {
       paymentMethod TEXT,
       transactionId TEXT,
       notes TEXT,
+      rapidAssistance BOOLEAN DEFAULT FALSE,
+      rapidAssistantName TEXT,
+      rapidAssistantPhone TEXT,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (userId) REFERENCES users (id),
@@ -299,10 +302,19 @@ const initDatabase = () => {
     )
   `);
 
+  // Migrations tracking table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename TEXT UNIQUE NOT NULL,
+      executed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   console.log('Database tables created successfully');
 };
 
 // Initialize database on module load
 initDatabase();
 
-module.exports = db; 
+module.exports = db;

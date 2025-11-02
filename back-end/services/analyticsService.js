@@ -1,6 +1,6 @@
 const db = require('../config/database');
 const Hospital = require('../models/Hospital');
-const Booking = require('../models/Booking');
+
 const ResourceAuditLog = require('../models/ResourceAuditLog');
 
 /**
@@ -231,7 +231,7 @@ class AnalyticsService {
    * Calculate utilization metrics from audit logs
    * @private
    */
-  static _calculateUtilizationMetrics(currentResources, auditLogs, options) {
+  static _calculateUtilizationMetrics(currentResources, auditLogs) {
     const metrics = {};
     
     currentResources.forEach(resource => {
@@ -791,7 +791,7 @@ class AnalyticsService {
    */
   static _getCapacityPlanningRecommendations(hospitalId, options) {
     const utilization = Hospital.getResourceUtilization(hospitalId);
-    const demandTrends = this._getBookingTrends(hospitalId, options);
+
     
     const recommendations = [];
     

@@ -101,7 +101,7 @@ exports.getBloodRequestById = async (req, res) => {
 exports.updateBloodRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, notes } = req.body;
+    const { status } = req.body;
 
     BloodRequestService.updateStatus(id, status);
     const bloodRequest = BloodRequestService.getById(id);
@@ -127,7 +127,7 @@ exports.matchDonor = async (req, res) => {
     const { donorId, donorName, donorPhone } = req.body;
 
     const donorData = { donorId, donorName, donorPhone };
-    const matchedDonor = BloodRequestService.addMatchedDonor(id, donorData);
+    BloodRequestService.addMatchedDonor(id, donorData);
     const bloodRequest = BloodRequestService.getById(id);
 
     res.json({

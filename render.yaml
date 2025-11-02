@@ -1,0 +1,53 @@
+services:
+  - type: web
+    name: rapidcare-backend
+    runtime: node
+    plan: free
+    rootDir: back-end
+    buildCommand: npm install && npm run migrate # This is the corrected line
+    startCommand: npm start
+    healthCheckPath: /api/health
+    env: node
+    nodeVersion: "18"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+        sync: false
+      - key: FRONTEND_URL
+        value: https://rapidcare.vercel.app
+      - key: DATABASE_URL
+        value: ./database.sqlite
+      - key: SEED_DATA
+        value: false
+      - key: LOG_LEVEL
+        value: info
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+      - key: ENABLE_SECURITY_HEADERS
+        value: true
+      - key: MAX_FILE_SIZE
+        value: 5242880
+    autoDeploy: true
+    branch: main
+    
+  # Optional: PostgreSQL Database (uncomment for production database)
+  # - type: pserv
+  #   name: rapidcare-database
+  #   plan: free
+  #   env: postgresql
+  #   databaseName: rapidcare
+  #   databaseUser: rapidcare_user
+
+# Optional: Static site for documentation (if needed)
+# - type: static
+#   name: rapidcare-docs
+#   buildCommand: npm run build:docs
+#   staticPublishPath: ./docs/build
+#   pullRequestPreviewsEnabled: true
+#   branch: main

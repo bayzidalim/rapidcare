@@ -13,11 +13,6 @@
     "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
     "start:backend": "cd back-end && npm start",
     "start:frontend": "cd front-end && npm start",
-    "test": "npm run test:backend && npm run test:frontend",
-    "test:backend": "cd back-end && npm test",
-    "test:frontend": "cd front-end && npm test",
-    "lint": "npm run lint:backend && npm run lint:frontend",
-    "lint:backend": "cd back-end && npm run lint",
     "lint:frontend": "cd front-end && npm run lint",
     "install:all": "npm install && cd back-end && npm install && cd ../front-end && npm install",
     "clean": "rm -rf node_modules back-end/node_modules front-end/node_modules",
@@ -57,6 +52,6 @@
     "npm": ">=8.0.0"
   },
   "dependencies": {
-    "axios": "^1.11.0"
+    "axios": "^1.12.2"
   }
 }

@@ -66,7 +66,7 @@ class HospitalPricing {
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
     
-    const result = stmt.run(hospitalId, normalizedType, basePrice, serviceChargePercentage);
+    stmt.run(hospitalId, normalizedType, basePrice, serviceChargePercentage);
     
     // Return the updated pricing record
     return this.getPricing(hospitalId, normalizedType);

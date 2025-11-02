@@ -1,5 +1,6 @@
 const BookingService = require('../services/bookingService');
 const BookingApprovalService = require('../services/bookingApprovalService');
+const ValidationService = require('../services/validationService');
 const User = require('../models/User');
 const HospitalPricing = require('../models/HospitalPricing');
 
@@ -20,8 +21,18 @@ exports.createBooking = async (req, res) => {
       surgeonId,
       scheduledDate,
       estimatedDuration,
-      notes
+      notes,
+      rapidAssistance
     } = req.body;
+
+    // Validate rapid assistance eligibility
+    const rapidAssistanceValidation = ValidationService.validateRapidAssistanceEligibility(patientAge, rapidAssistance);
+    if (!rapidAssistanceValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        error: rapidAssistanceValidation.errors[0]
+      });
+    }
 
     const bookingData = {
       userId: req.user.id, // Use authenticated user's ID
@@ -38,7 +49,8 @@ exports.createBooking = async (req, res) => {
       surgeonId,
       scheduledDate,
       estimatedDuration,
-      notes
+      notes,
+      rapidAssistance
     };
 
     const booking = BookingService.create(bookingData);
@@ -105,7 +117,7 @@ exports.getBookingById = async (req, res) => {
 exports.updateBookingStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, notes } = req.body;
+    const { status } = req.body;
 
     BookingService.updateStatus(id, status);
     const booking = BookingService.getById(id);
@@ -154,20 +166,28 @@ exports.getAllBookings = async (req, res) => {
 exports.cancelBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const { reason, notes } = req.body;
+    const cancelledBy = req.user.id;
 
-    const booking = BookingService.cancel(id);
+    const result = await BookingApprovalService.cancelBooking(id, cancelledBy, { reason, notes });
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.message
+      });
+    }
 
     res.json({
       success: true,
-      data: booking,
+      data: result.data,
       message: 'Booking cancelled successfully'
     });
   } catch (error) {
     console.error('Error cancelling booking:', error);
-    res.status(400).json({
+    res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Failed to cancel booking'
     });
   }
 };
@@ -259,7 +279,7 @@ exports.approveBooking = async (req, res) => {
     }
 
     // Check if user has permission to approve this booking
-    if (req.user.userType === 'hospital-authority' && req.user.hospital_id !== booking.hospitalId) {
+    if (req.user.userType === 'hospital-authority' && req.user.hospitalId !== booking.hospitalId) {
       return res.status(403).json({
         success: false,
         error: 'You can only approve bookings for your assigned hospital'
@@ -322,7 +342,7 @@ exports.declineBooking = async (req, res) => {
     }
 
     // Check if user has permission to decline this booking
-    if (req.user.userType === 'hospital-authority' && req.user.hospital_id !== booking.hospitalId) {
+    if (req.user.userType === 'hospital-authority' && req.user.hospitalId !== booking.hospitalId) {
       return res.status(403).json({
         success: false,
         error: 'You can only decline bookings for your assigned hospital'
@@ -408,10 +428,10 @@ exports.getBookingHistory = async (req, res) => {
   }
 };
 
-// Process booking payment
+// Process booking payment with enhanced rapid assistance support
 exports.processBookingPayment = async (req, res) => {
   try {
-    const { bookingId, transactionId, amount } = req.body;
+    const { bookingId, transactionId, amount, rapidAssistance } = req.body;
 
     // Validate required fields
     if (!bookingId || !transactionId) {
@@ -446,14 +466,43 @@ exports.processBookingPayment = async (req, res) => {
       });
     }
 
-    // Calculate payment amount using hospital pricing
+    // Calculate base payment amount using hospital pricing
     const costBreakdown = HospitalPricing.calculateBookingCost(
       booking.hospitalId,
       booking.resourceType,
       booking.estimatedDuration || 24
     );
 
-    const paymentAmount = amount || costBreakdown.total_cost;
+    let basePaymentAmount = costBreakdown.total_cost;
+    let rapidAssistanceCharge = 0;
+
+    // Handle rapid assistance charge calculation
+    const requestedRapidAssistance = rapidAssistance !== undefined ? rapidAssistance : booking.rapidAssistance;
+    
+    if (requestedRapidAssistance) {
+      // Validate rapid assistance eligibility during payment
+      const rapidAssistanceValidation = ValidationService.validateRapidAssistanceEligibility(booking.patientAge, requestedRapidAssistance);
+      if (!rapidAssistanceValidation.isValid) {
+        return res.status(400).json({
+          success: false,
+          error: rapidAssistanceValidation.errors[0]
+        });
+      }
+      
+      rapidAssistanceCharge = ValidationService.calculateRapidAssistanceCharge(requestedRapidAssistance);
+    }
+
+    // Calculate total payment amount
+    const totalPaymentAmount = basePaymentAmount + rapidAssistanceCharge;
+
+    // Validate payment amount if provided
+    const paymentAmount = amount || totalPaymentAmount;
+    if (amount && Math.abs(amount - totalPaymentAmount) > 0.01) {
+      return res.status(400).json({
+        success: false,
+        error: `Payment amount mismatch. Expected: ${totalPaymentAmount}৳, Received: ${amount}৳`
+      });
+    }
 
     // Check user balance
     if (!User.hasSufficientBalance(req.user.id, paymentAmount)) {
@@ -468,20 +517,68 @@ exports.processBookingPayment = async (req, res) => {
       });
     }
 
+    // Create enhanced cost breakdown for payment processing
+    const enhancedCostBreakdown = {
+      ...costBreakdown,
+      rapid_assistance_charge: rapidAssistanceCharge,
+      total_amount: paymentAmount,
+      hospital_share: costBreakdown.hospital_share,
+      service_charge_share: costBreakdown.service_charge_share,
+      rapid_assistance_share: rapidAssistanceCharge, // Rapid assistance goes to platform
+      platform_revenue: costBreakdown.service_charge_share + rapidAssistanceCharge
+    };
+
     // Process payment (deduct balance)
     const paymentResult = User.processPayment(
       req.user.id,
       paymentAmount,
       bookingId,
       transactionId,
-      costBreakdown
+      enhancedCostBreakdown
     );
 
-    // Update booking status
+    // Update booking with rapid assistance details if selected
+    if (requestedRapidAssistance && !booking.rapidAssistance) {
+      BookingService.updateRapidAssistance(bookingId, true, rapidAssistanceCharge);
+    }
+
+    // Update booking payment status
     BookingService.updatePaymentStatus(bookingId, 'paid', 'balance', transactionId);
 
-    // Get updated booking
+    // Get updated booking with all changes
     const updatedBooking = BookingService.getById(bookingId);
+
+    // Create comprehensive itemized payment breakdown for response
+    const itemizedBreakdown = {
+      base_booking_cost: costBreakdown.total_cost,
+      base_price: costBreakdown.base_price,
+      service_charge_percentage: costBreakdown.service_charge_percentage,
+      service_charge_amount: costBreakdown.service_charge_amount,
+      hospital_share: costBreakdown.hospital_share,
+      rapid_assistance_charge: rapidAssistanceCharge,
+      platform_revenue: enhancedCostBreakdown.platform_revenue,
+      total_amount: paymentAmount,
+      currency: 'BDT',
+      currency_symbol: '৳',
+      breakdown_items: [
+        {
+          item: 'Hospital Resource Booking',
+          amount: costBreakdown.total_cost,
+          description: `${booking.resourceType} for ${costBreakdown.duration_days} days`,
+          category: 'medical_service'
+        }
+      ]
+    };
+
+    // Add rapid assistance line item if applicable
+    if (rapidAssistanceCharge > 0) {
+      itemizedBreakdown.breakdown_items.push({
+        item: 'Rapid Assistance Service',
+        amount: rapidAssistanceCharge,
+        description: 'Senior citizen escort service from gate to bed/ICU',
+        category: 'addon_service'
+      });
+    }
 
     res.json({
       success: true,
@@ -490,9 +587,17 @@ exports.processBookingPayment = async (req, res) => {
         payment: {
           amount: paymentAmount,
           transaction_id: transactionId,
+          payment_method: 'balance',
+          processed_at: new Date().toISOString(),
           previous_balance: paymentResult.previousBalance,
           new_balance: paymentResult.newBalance,
-          cost_breakdown: costBreakdown
+          cost_breakdown: itemizedBreakdown,
+          rapid_assistance: {
+            requested: requestedRapidAssistance,
+            charge: rapidAssistanceCharge,
+            assistant_name: updatedBooking.rapidAssistantName,
+            assistant_phone: updatedBooking.rapidAssistantPhone
+          }
         }
       },
       message: 'Payment processed successfully'

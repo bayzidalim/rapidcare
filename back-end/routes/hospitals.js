@@ -4,10 +4,10 @@ const hospitalController = require('../controllers/hospitalController');
 const { 
   authenticate, 
   authorizeUserType, 
-  authorizePermission, 
   requireAdmin, 
   requireHospitalAuthority, 
-  requireOwnHospital 
+  requireOwnHospital,
+  optionalAuth
 } = require('../middleware/auth');
 
 // GET /api/hospitals - Get all hospitals
@@ -40,8 +40,8 @@ router.put('/my-hospital/resources', authenticate, requireHospitalAuthority, hos
 // PUT /api/hospitals/:id/resources - Update hospital resources (hospital authority own hospital only)
 router.put('/:id/resources', authenticate, requireHospitalAuthority, requireOwnHospital, hospitalController.updateHospitalResources);
 
-// GET /api/hospitals/:id/resources/history - Get resource audit history (hospital authority own hospital only)
-router.get('/:id/resources/history', authenticate, requireHospitalAuthority, requireOwnHospital, hospitalController.getResourceHistory);
+// GET /api/hospitals/:id/resources/history - Public-safe: returns empty list if unauthorized
+router.get('/:id/resources/history', optionalAuth, hospitalController.getResourceHistoryPublic);
 
 // POST /api/hospitals/:id/resources/validate - Validate resource update data (hospital authority own hospital only)
 router.post('/:id/resources/validate', authenticate, requireHospitalAuthority, requireOwnHospital, hospitalController.validateResourceUpdate);

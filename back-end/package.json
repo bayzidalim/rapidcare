@@ -11,16 +11,10 @@
     "seed:financial": "node utils/financialSeeder.js",
     "migrate": "node migrations/migrate.js",
     "migrate:status": "node migrations/migrate.js status",
-    "test": "mocha tests/**/*.test.js",
-    "test:models": "mocha tests/models/*.test.js",
-    "test:bkash": "node tests/run-bkash-tests.js",
-    "test:e2e": "mocha tests/e2e/*.test.js --timeout 30000",
-    "test:integration": "mocha tests/integration/*.test.js --timeout 20000",
-    "test:performance": "mocha tests/performance/*.test.js --timeout 60000",
-    "test:consistency": "mocha tests/consistency/*.test.js --timeout 30000",
-    "test:comprehensive": "mocha tests/comprehensive/*.test.js --timeout 45000",
-    "test:financial": "npm run test:e2e && npm run test:integration && npm run test:performance && npm run test:consistency && npm run test:comprehensive",
-    "lint": "echo 'Linting completed'",
+    "test": "mocha tests/**/*.test.js --timeout 10000",
+    "test:watch": "mocha tests/**/*.test.js --watch --timeout 10000",
+    "test:rapid-assistance": "mocha tests/services/rapidAssistance.test.js --timeout 10000",
+    "lint": "eslint .",
     "postinstall": "npm run migrate"
   },
   "keywords": [
@@ -47,10 +41,11 @@
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
-    "chai": "^5.2.1",
-    "mocha": "^11.7.1",
+    "chai": "^4.3.10",
+    "eslint": "^9.36.0",
+    "mocha": "^10.2.0",
     "nodemon": "^3.1.10",
-    "sinon": "^21.0.0",
-    "supertest": "^7.1.4"
+    "sinon": "^17.0.1",
+    "supertest": "^6.3.3"
   }
 }

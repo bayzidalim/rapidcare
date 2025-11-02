@@ -24,13 +24,13 @@ const adminController = {
       checkAdmin(req, res, () => {
         const users = User.getAll();
         // Exclude password field
-        const usersWithoutPassword = users.map(({ password, ...rest }) => rest);
+        const usersWithoutPassword = users.map(({ password: _password, ...rest }) => rest);
         res.json({
           success: true,
           data: usersWithoutPassword
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch users'
@@ -48,13 +48,13 @@ const adminController = {
             error: 'User not found'
           });
         }
-        const { password, ...userWithoutPassword } = user;
+        const { password: _password, ...userWithoutPassword } = user;
         res.json({
           success: true,
           data: userWithoutPassword
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch user'
@@ -75,7 +75,6 @@ const adminController = {
           });
         }
         // Hash password
-        const bcrypt = require('bcryptjs');
         const hashedPassword = bcrypt.hashSync(password, 10);
         const userId = User.create({
           name,
@@ -91,7 +90,7 @@ const adminController = {
           data: userWithoutPassword
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to create user'
@@ -117,13 +116,13 @@ const adminController = {
           isActive: isActive !== undefined ? isActive : user.isActive
         });
         const updatedUser = User.findById(req.params.id);
-        const { password, ...userWithoutPassword } = updatedUser;
+        const { password: _password, ...userWithoutPassword } = updatedUser;
         res.json({
           success: true,
           data: userWithoutPassword
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to update user'
@@ -147,7 +146,7 @@ const adminController = {
           message: 'User deleted successfully'
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to delete user'
@@ -165,7 +164,7 @@ const adminController = {
           data: hospitals
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch hospitals'
@@ -182,7 +181,7 @@ const adminController = {
           data: hospitals
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch pending hospitals'
@@ -199,7 +198,7 @@ const adminController = {
           data: stats
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch approval stats'
@@ -296,7 +295,7 @@ const adminController = {
           data: hospital
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch hospital'
@@ -314,7 +313,7 @@ const adminController = {
           data: hospital
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to create hospital'
@@ -339,7 +338,7 @@ const adminController = {
           data: updatedHospital
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to update hospital'
@@ -363,7 +362,7 @@ const adminController = {
           message: 'Hospital deleted successfully'
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to delete hospital'
@@ -381,7 +380,7 @@ const adminController = {
           data: bookings
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch bookings'
@@ -404,7 +403,7 @@ const adminController = {
           data: booking
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch booking'
@@ -440,7 +439,7 @@ const adminController = {
           data: updatedBooking
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to update booking'
@@ -464,7 +463,7 @@ const adminController = {
           message: 'Booking deleted successfully'
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to delete booking'
@@ -482,7 +481,7 @@ const adminController = {
           data: requests
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch blood requests'
@@ -505,7 +504,7 @@ const adminController = {
           data: request
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch blood request'
@@ -532,7 +531,7 @@ const adminController = {
           data: updatedRequest
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to update blood request'
@@ -556,7 +555,7 @@ const adminController = {
           message: 'Blood request deleted successfully'
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to delete blood request'
@@ -591,7 +590,7 @@ const adminController = {
           }
         });
       });
-    } catch (error) {
+    } catch {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch stats'

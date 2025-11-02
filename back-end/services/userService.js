@@ -67,7 +67,7 @@ class UserService {
         email: user.email,
         userType: user.userType,
         role: user.role,
-        hospitalId: user.hospitalId
+        hospitalId: user.hospitalId || user.hospital_id
       },
       config.jwtSecret,
       { expiresIn: config.jwtExpiresIn }
@@ -85,7 +85,7 @@ class UserService {
   // Get user by ID
   static getById(id) {
     const user = db.prepare(`
-      SELECT u.*, ha.role, ha.hospitalId, ha.permissions
+      SELECT u.*, ha.role, ha.hospitalId as authHospitalId, ha.permissions
       FROM users u
       LEFT JOIN hospital_authorities ha ON u.id = ha.userId
       WHERE u.id = ? AND u.isActive = 1
@@ -97,6 +97,13 @@ class UserService {
 
     // Remove password from response
     const { password, ...userWithoutPassword } = user;
+    
+    // For hospital authorities, use hospitalId from hospital_authorities table if available,
+    // otherwise fall back to hospital_id from users table
+    if (user.userType === 'hospital-authority') {
+      userWithoutPassword.hospitalId = user.authHospitalId || user.hospital_id;
+    }
+    
     return userWithoutPassword;
   }
 

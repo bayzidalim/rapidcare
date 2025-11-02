@@ -131,6 +131,46 @@ class NotificationService {
       });
     });
   }
-}
 
+  // Booking notification helpers
+  static async sendBookingApprovalNotification(bookingId, userId, details) {
+    return this.create({
+      userId,
+      type: 'booking_approved',
+      title: 'Booking Approved!',
+      message: `Your booking for ${details.resourceType} at ${details.hospitalName} has been approved.`,
+      data: { bookingId, ...details }
+    });
+  }
+
+  static async sendBookingDeclineNotification(bookingId, userId, details) {
+    return this.create({
+      userId,
+      type: 'booking_declined',
+      title: 'Booking Declined',
+      message: `Your booking for ${details.resourceType} at ${details.hospitalName} was declined. Reason: ${details.reason}`,
+      data: { bookingId, ...details }
+    });
+  }
+
+  static async sendBookingCompletionNotification(bookingId, userId, details) {
+    return this.create({
+      userId,
+      type: 'booking_completed',
+      title: 'Booking Completed',
+      message: `Your booking at ${details.hospitalName} has been marked as completed.`,
+      data: { bookingId, ...details }
+    });
+  }
+
+  static async sendBookingCancellationNotification(bookingId, userId, details) {
+    return this.create({
+      userId,
+      type: 'booking_cancelled',
+      title: 'Booking Cancelled',
+      message: `Your booking at ${details.hospitalName} has been cancelled.`,
+      data: { bookingId, ...details }
+    });
+  }
+}
 module.exports = NotificationService;

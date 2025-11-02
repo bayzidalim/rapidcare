@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PricingManagementService = require('../services/pricingManagementService');
-const { authenticate, requireHospitalAuthority, requireOwnHospital } = require('../middleware/auth');
+const { authenticate, requireOwnHospital } = require('../middleware/auth');
 
 /**
  * @route   GET /api/hospitals/:id/pricing
@@ -66,10 +66,34 @@ router.put('/hospitals/:id/pricing', authenticate, requireOwnHospital, async (re
       req.user.id
     );
 
+    // Check if the result indicates failure
+    if (result && result.success === false) {
+      // Extract error information
+      const errorMessage = result.error?.messageEn || result.error?.message || result.message || 'Failed to update pricing';
+      const errorCode = result.error?.code || 'PRICING_UPDATE_FAILED';
+      
+      return res.status(400).json({
+        success: false,
+        error: errorMessage,
+        errorCode: errorCode,
+        errors: result.errors || [],
+        warnings: result.warnings || []
+      });
+    }
+
+    // Check if result is valid and successful
+    if (!result || !result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result?.message || 'Failed to update pricing',
+        errors: result?.errors || []
+      });
+    }
+
     res.status(200).json({
       success: true,
       data: result,
-      message: 'Pricing updated successfully'
+      message: result.message || 'Pricing updated successfully'
     });
 
   } catch (error) {

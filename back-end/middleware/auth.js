@@ -29,7 +29,7 @@ const authenticate = (req, res, next) => {
     // Add user to request object
     req.user = user;
     next();
-  } catch (error) {
+  } catch {
     return res.status(401).json({
       success: false,
       error: 'Invalid token'
@@ -151,13 +151,15 @@ const optionalAuth = (req, res, next) => {
     const token = authHeader.substring(7);
     const decoded = UserService.verifyToken(token);
     
-    const user = UserService.getById(decoded.userId);
+    // Get user from database (handle both userId and id for compatibility)
+    const userId = decoded.userId || decoded.id;
+    const user = UserService.getById(userId);
     if (user) {
       req.user = user;
     }
     
     next();
-  } catch (error) {
+  } catch {
     next(); // Continue without user
   }
 };

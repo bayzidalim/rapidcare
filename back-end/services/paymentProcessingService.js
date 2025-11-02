@@ -1,6 +1,7 @@
 const Transaction = require('../models/Transaction');
 const PaymentConfig = require('../models/PaymentConfig');
 const Booking = require('../models/Booking');
+const ValidationService = require('./validationService');
 const NotificationService = require('./notificationService');
 const ErrorHandler = require('../utils/errorHandler');
 const { formatTaka, parseTaka, isValidTakaAmount, roundTaka } = require('../utils/currencyUtils');
@@ -68,10 +69,27 @@ class PaymentProcessingService {
         });
       }
 
+      // Check if Rapid Assistance is requested and validate senior citizen status
+      const rapidAssistance = paymentData.rapidAssistance || false;
+      let rapidAssistanceAmount = 0;
+      
+      if (rapidAssistance) {
+        // Use ValidationService for consistent rapid assistance validation
+        const rapidAssistanceValidation = ValidationService.validateRapidAssistanceEligibility(booking.patientAge, rapidAssistance);
+        if (!rapidAssistanceValidation.isValid) {
+          db.exec('ROLLBACK');
+          return {
+            success: false,
+            error: rapidAssistanceValidation.errors[0]
+          };
+        }
+        rapidAssistanceAmount = ValidationService.calculateRapidAssistanceCharge(rapidAssistance);
+      }
+
       // Validate bKash payment data with comprehensive error handling
       const validation = ErrorHandler.validateBkashPaymentData({
         ...paymentData,
-        amount: booking.paymentAmount
+        amount: booking.paymentAmount + rapidAssistanceAmount
       });
       
       if (!validation.isValid) {
@@ -86,7 +104,7 @@ class PaymentProcessingService {
       // Perform fraud detection analysis
       const fraudAnalysis = await fraudDetectionService.analyzeTransaction({
         userId,
-        amountTaka: parseFloat(booking.paymentAmount),
+        amountTaka: parseFloat(booking.paymentAmount + rapidAssistanceAmount),
         mobileNumber: paymentData.mobileNumber,
         ipAddress,
         userAgent,
@@ -111,7 +129,7 @@ class PaymentProcessingService {
                 bookingId,
                 riskScore: fraudAnalysis.analysis.riskScore,
                 fraudFlags: fraudAnalysis.analysis.fraudFlags,
-                amount: booking.paymentAmount
+                amount: booking.paymentAmount + rapidAssistanceAmount
               },
               severity: 'CRITICAL'
             });
@@ -135,7 +153,7 @@ class PaymentProcessingService {
                 bookingId,
                 riskScore: fraudAnalysis.analysis.riskScore,
                 fraudFlags: fraudAnalysis.analysis.fraudFlags,
-                amount: booking.paymentAmount
+                amount: booking.paymentAmount + rapidAssistanceAmount
               },
               severity: 'HIGH'
             });
@@ -144,7 +162,7 @@ class PaymentProcessingService {
       }
 
       // Validate Taka amount
-      const amountValidation = ErrorHandler.validateTakaAmount(booking.paymentAmount, {
+      const amountValidation = ErrorHandler.validateTakaAmount(booking.paymentAmount + rapidAssistanceAmount, {
         minAmount: 10,
         maxAmount: 25000
       });
@@ -193,9 +211,11 @@ class PaymentProcessingService {
           paymentMethod: 'bkash',
           attemptCount,
           bkashTransactionId: null, // Will be set after successful payment
-          securityMetadata: processedPaymentData.security_metadata,
+          security_metadata: processedPaymentData.security_metadata,
           riskScore: fraudAnalysis.success ? fraudAnalysis.analysis.riskScore : 0,
-          fraudFlags: fraudAnalysis.success ? fraudAnalysis.analysis.fraudFlags : []
+          fraudFlags: fraudAnalysis.success ? fraudAnalysis.analysis.fraudFlags : [],
+          rapidAssistance: rapidAssistance,
+          rapidAssistanceAmount: rapidAssistance ? rapidAssistanceAmount : 0
         }
       };
 
@@ -213,8 +233,54 @@ class PaymentProcessingService {
         // Payment successful - confirm transaction
         const confirmedTransaction = this.confirmBkashPayment(transaction.id, paymentResult.bkashTransactionId);
         
-        // Update booking payment status
+        // Update booking payment status and add Rapid Assistance info if applicable
+        const updatedBookingData = {
+          paymentStatus: 'paid',
+          paymentMethod: 'bkash',
+          transactionId: transactionId
+        };
+        
+        // Add Rapid Assistance details if requested
+        if (rapidAssistance) {
+          // Generate random Rapid Assistant details
+          const rapidAssistants = [
+            { name: "আব্দুল কাদের", phone: "01712345678" },
+            { name: "ফাতেমা বেগম", phone: "01723456789" },
+            { name: "মোহাম্মদ আলী", phone: "01734567890" },
+            { name: "সাবরিনা আক্তার", phone: "01745678901" },
+            { name: "আবুল হোসেন", phone: "01756789012" },
+            { name: "শাহজাহান মিয়া", phone: "01767890123" },
+            { name: "নাসিমা খাতুন", phone: "01778901234" },
+            { name: "রশিদ মিয়া", phone: "01789012345" }
+          ];
+          
+          const randomAssistant = rapidAssistants[Math.floor(Math.random() * rapidAssistants.length)];
+          
+          updatedBookingData.rapidAssistance = true;
+          updatedBookingData.rapidAssistantName = randomAssistant.name;
+          updatedBookingData.rapidAssistantPhone = randomAssistant.phone;
+        }
+        
         Booking.updatePaymentStatus(bookingId, 'paid', 'bkash', transactionId);
+        
+        // Update booking with Rapid Assistance details
+        if (rapidAssistance) {
+          const updateStmt = db.prepare(`
+            UPDATE bookings 
+            SET rapidAssistance = ?, 
+                rapidAssistantName = ?, 
+                rapidAssistantPhone = ?,
+                rapidAssistanceCharge = ?
+            WHERE id = ?
+          `);
+          updateStmt.run(
+            updatedBookingData.rapidAssistance,
+            updatedBookingData.rapidAssistantName,
+            updatedBookingData.rapidAssistantPhone,
+            rapidAssistanceAmount,
+            bookingId
+          );
+        }
 
         // Log successful financial operation
         await auditService.logFinancialOperation({
@@ -244,10 +310,48 @@ class PaymentProcessingService {
         this.generateAndSendBkashReceipt(transaction.id, userId)
           .catch(error => ErrorHandler.logError(error, { transactionId: transaction.id, type: 'receipt' }));
 
+        // Create itemized payment breakdown for response
+        const itemizedBreakdown = {
+          base_booking_cost: amountValidation.sanitizedAmount - rapidAssistanceAmount,
+          service_charge: roundTaka(serviceCharge),
+          hospital_amount: roundTaka(hospitalAmount),
+          rapid_assistance_charge: rapidAssistanceAmount,
+          total_amount: amountValidation.sanitizedAmount,
+          currency: 'BDT',
+          currency_symbol: '৳',
+          breakdown_items: [
+            {
+              item: 'Hospital Resource Booking',
+              amount: amountValidation.sanitizedAmount - rapidAssistanceAmount,
+              description: `${booking.resourceType} booking`,
+              category: 'medical_service'
+            }
+          ]
+        };
+
+        // Add rapid assistance line item if applicable
+        if (rapidAssistanceAmount > 0) {
+          itemizedBreakdown.breakdown_items.push({
+            item: 'Rapid Assistance Service',
+            amount: rapidAssistanceAmount,
+            description: 'Senior citizen escort service from gate to bed/ICU',
+            category: 'addon_service'
+          });
+        }
+
         return {
           success: true,
           transaction: confirmedTransaction,
-          paymentResult,
+          paymentResult: {
+            ...paymentResult,
+            cost_breakdown: itemizedBreakdown,
+            rapid_assistance: {
+              requested: rapidAssistance,
+              charge: rapidAssistanceAmount,
+              assistant_name: booking.rapidAssistantName,
+              assistant_phone: booking.rapidAssistantPhone
+            }
+          },
           message: 'bKash payment processed successfully',
           messageEn: 'bKash payment processed successfully',
           messageBn: 'bKash পেমেন্ট সফলভাবে সম্পন্ন হয়েছে',

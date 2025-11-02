@@ -241,7 +241,7 @@ class User {
     if (bookingId && costBreakdown) {
       const updateTransactionStmt = db.prepare(`
         UPDATE simple_transactions 
-        SET booking_id = ?, transaction_id = ?, hospital_amount = ?, service_charge = ?
+        SET booking_id = ?, transaction_id = ?, hospital_amount = ?, service_charge = ?, rapid_assistance_charge = ?
         WHERE user_id = ? AND amount = ? AND transaction_type = 'payment'
         AND id = (SELECT id FROM simple_transactions WHERE user_id = ? AND amount = ? AND transaction_type = 'payment' ORDER BY created_at DESC LIMIT 1)
       `);
@@ -250,6 +250,7 @@ class User {
         transactionId, 
         costBreakdown.hospital_share || 0, 
         costBreakdown.service_charge_share || 0,
+        costBreakdown.rapid_assistance_charge || costBreakdown.rapid_assistance_share || 0,
         userId, 
         -amount, 
         userId, 

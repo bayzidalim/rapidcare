@@ -220,8 +220,8 @@ class FinancialReconciliationService {
   async getTransactionsForDate(startDate, endDate) {
     const query = `
       SELECT * FROM transactions 
-      WHERE created_at >= ? AND created_at < ?
-      ORDER BY created_at ASC
+      WHERE createdAt >= ? AND createdAt < ?
+      ORDER BY createdAt ASC
     `;
     return this.db.prepare(query).all(startDate.toISOString(), endDate.toISOString());
   }
@@ -318,7 +318,7 @@ class FinancialReconciliationService {
       type: transaction.type,
       amount: formatTaka(transaction.amount),
       accountId: transaction.account_id,
-      timestamp: transaction.created_at,
+      timestamp: transaction.createdAt,
       reference: transaction.reference,
       status: transaction.status
     };
@@ -342,7 +342,7 @@ class FinancialReconciliationService {
     const query = `
       SELECT balance FROM account_balances 
       WHERE account_id = ? AND last_updated < ?
-      ORDER BY last_updated DESC LIMIT 1
+      ORDER BY updatedAt DESC LIMIT 1
     `;
     const result = this.db.prepare(query).get(accountId, date);
     return result ? parseTaka(result.balance) : 0;
@@ -358,7 +358,7 @@ class FinancialReconciliationService {
         ? accountBalance - transactionAmount 
         : accountBalance + transactionAmount;
         
-      const balanceHistory = await this.getBalanceHistory(transaction.account_id, transaction.created_at);
+      const balanceHistory = await this.getBalanceHistory(transaction.account_id, transaction.createdAt);
       const actualPreviousBalance = balanceHistory.length > 0 ? parseTaka(balanceHistory[0].balance) : 0;
       
       const isConsistent = Math.abs(expectedBalance - actualPreviousBalance) < 0.01;
@@ -396,11 +396,11 @@ class FinancialReconciliationService {
     try {
       const query = `
         SELECT COUNT(*) as count FROM transactions 
-        WHERE reference = ? AND id != ? AND created_at BETWEEN ? AND ?
+        WHERE reference = ? AND id != ? AND createdAt BETWEEN ? AND ?
       `;
-      const startTime = new Date(transaction.created_at);
+      const startTime = new Date(transaction.createdAt);
       startTime.setMinutes(startTime.getMinutes() - 5);
-      const endTime = new Date(transaction.created_at);
+      const endTime = new Date(transaction.createdAt);
       endTime.setMinutes(endTime.getMinutes() + 5);
       
       const result = this.db.prepare(query).get(
@@ -427,8 +427,8 @@ class FinancialReconciliationService {
   async getTransactionsForPeriod(startDate, endDate) {
     const query = `
       SELECT * FROM transactions 
-      WHERE created_at >= ? AND created_at <= ?
-      ORDER BY created_at ASC
+      WHERE createdAt >= ? AND createdAt <= ?
+      ORDER BY createdAt ASC
     `;
     return this.db.prepare(query).all(startDate.toISOString(), endDate.toISOString());
   }
@@ -573,7 +573,7 @@ class FinancialReconciliationService {
     const query = `
       SELECT status FROM reconciliation_records 
       WHERE date = ? 
-      ORDER BY created_at DESC LIMIT 1
+      ORDER BY createdAt DESC LIMIT 1
     `;
     const result = this.db.prepare(query).get(today.toISOString());
     
@@ -622,8 +622,8 @@ class FinancialReconciliationService {
     const query = `
       SELECT DATE(created_at) as date, COUNT(*) as transaction_count, SUM(amount) as total_amount
       FROM transactions
-      WHERE created_at >= date('now', '-7 days')
-      GROUP BY DATE(created_at)
+      WHERE createdAt >= date('now', '-7 days')
+      GROUP BY DATE(createdAt)
       HAVING transaction_count > 1000 OR total_amount > 500000 -- Configurable thresholds
     `;
     return this.db.prepare(query).all();
@@ -672,7 +672,7 @@ class FinancialReconciliationService {
     const query = `
       SELECT balance, last_updated FROM account_balances 
       WHERE account_id = ? AND last_updated < ?
-      ORDER BY last_updated DESC LIMIT 10
+      ORDER BY updatedAt DESC LIMIT 10
     `;
     return this.db.prepare(query).all(accountId, beforeDate);
   }
@@ -747,7 +747,7 @@ class FinancialReconciliationService {
   async resolveDiscrepancy(discrepancyId, userId, resolutionNotes) {
     const query = `
       UPDATE discrepancy_alerts 
-      SET status = 'RESOLVED', resolved_at = ?, resolved_by = ?, resolution_notes = ?
+      SET status = 'RESOLVED', resolvedAt = ?, resolvedBy = ?, resolutionNotes = ?
       WHERE id = ?
     `;
     const result = this.db.prepare(query).run(
