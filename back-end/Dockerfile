@@ -5,13 +5,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (skip postinstall to avoid running migrations before code is copied)
-RUN npm ci --only=production --ignore-scripts
+# Install dependencies and build native modules
+RUN npm ci --only=production
 
 # Copy source code
 COPY . .
 
-# Run migrations after code is copied
+# Run migrations
 RUN npm run migrate
 
 # Create database directory

@@ -14,8 +14,7 @@
     "test": "mocha tests/**/*.test.js --timeout 10000",
     "test:watch": "mocha tests/**/*.test.js --watch --timeout 10000",
     "test:rapid-assistance": "mocha tests/services/rapidAssistance.test.js --timeout 10000",
-    "lint": "eslint .",
-    "postinstall": "npm run migrate"
+    "lint": "eslint ."
   },
   "keywords": [
     "rapidcare",
