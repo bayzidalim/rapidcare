@@ -302,9 +302,10 @@ const AdminFinancialDashboard: React.FC = () => {
         setAdminBalanceSummary(adminBalanceSummaryResponse.data.data);
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
       console.error('Error fetching financial data:', err);
-      setError(err.response?.data?.error || 'Failed to fetch financial data');
+      setError(error.response?.data?.error || 'Failed to fetch financial data');
     } finally {
       setLoading(false);
     }
@@ -375,7 +376,7 @@ const AdminFinancialDashboard: React.FC = () => {
     }
   };
 
-  const openAnomalyDialog = (anomaly: any) => {
+  const openAnomalyDialog = (anomaly: Record<string, unknown>) => {
     setSelectedAnomaly(anomaly);
     setAnomalyDialogOpen(true);
   };

@@ -17,17 +17,18 @@ const retryOperation = async <T>(
   maxRetries: number = 3,
   delay: number = 1000
 ): Promise<T> => {
-  let lastError: any;
+  let lastError: unknown;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await operation();
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error;
+      const err = error as { response?: { status?: number } };
       
       // Don't retry on client errors (4xx) except for 408 (timeout) and 429 (rate limit)
-      if (error.response?.status >= 400 && error.response?.status < 500) {
-        if (error.response.status !== 408 && error.response.status !== 429) {
+      if (err.response?.status && err.response?.status >= 400 && err.response?.status < 500) {
+        if (err.response.status !== 408 && err.response.status !== 429) {
           throw error;
         }
       }
@@ -89,71 +90,71 @@ api.interceptors.response.use(
 export const hospitalAPI = {
   getAll: () => api.get('/hospitals'),
   getById: (id: number) => api.get(`/hospitals/${id}`),
-  search: (params: any) => api.get('/hospitals/search', { params }),
-  getWithResources: (params: any) => api.get('/hospitals/resources', { params }),
-  create: (data: any) => api.post('/hospitals', data),
-  updateResources: (id: number, data: any) => api.put(`/hospitals/${id}/resources`, data),
-  update: (id: number, data: any) => api.put(`/hospitals/${id}`, data),
+  search: (params: Record<string, unknown>) => api.get('/hospitals/search', { params }),
+  getWithResources: (params: Record<string, unknown>) => api.get('/hospitals/resources', { params }),
+  create: (data: Record<string, unknown>) => api.post('/hospitals', data),
+  updateResources: (id: number, data: Record<string, unknown>) => api.put(`/hospitals/${id}/resources`, data),
+  update: (id: number, data: Record<string, unknown>) => api.put(`/hospitals/${id}`, data),
   delete: (id: number) => api.delete(`/hospitals/${id}`),
   getMyHospitals: () => api.get('/hospitals/my-hospitals'),
   getMyHospital: () => api.get('/hospitals/my-hospital'),
-  updateMyHospitalResources: (data: any) => api.put('/hospitals/my-hospital/resources', data),
-  resubmitHospital: (data: any) => api.put('/hospitals/my-hospital', data),
-  getResourceHistory: (id: number, params?: any) => api.get(`/hospitals/${id}/resources/history`, { params }),
-  validateResourceUpdate: (id: number, data: any) => api.post(`/hospitals/${id}/resources/validate`, data),
+  updateMyHospitalResources: (data: Record<string, unknown>) => api.put('/hospitals/my-hospital/resources', data),
+  resubmitHospital: (data: Record<string, unknown>) => api.put('/hospitals/my-hospital', data),
+  getResourceHistory: (id: number, params?: Record<string, unknown>) => api.get(`/hospitals/${id}/resources/history`, { params }),
+  validateResourceUpdate: (id: number, data: Record<string, unknown>) => api.post(`/hospitals/${id}/resources/validate`, data),
 
   // Analytics endpoints
-  getAnalyticsDashboard: (id: number, params?: any) => api.get(`/hospitals/${id}/analytics/dashboard`, { params }),
-  getResourceUtilizationAnalytics: (id: number, params?: any) => api.get(`/hospitals/${id}/analytics/resource-utilization`, { params }),
-  getBookingHistoryAnalytics: (id: number, params?: any) => api.get(`/hospitals/${id}/analytics/booking-history`, { params }),
-  getResourceUsagePatterns: (id: number, params?: any) => api.get(`/hospitals/${id}/analytics/usage-patterns`, { params }),
-  getPerformanceMetrics: (id: number, params?: any) => api.get(`/hospitals/${id}/analytics/performance`, { params }),
+  getAnalyticsDashboard: (id: number, params?: Record<string, unknown>) => api.get(`/hospitals/${id}/analytics/dashboard`, { params }),
+  getResourceUtilizationAnalytics: (id: number, params?: Record<string, unknown>) => api.get(`/hospitals/${id}/analytics/resource-utilization`, { params }),
+  getBookingHistoryAnalytics: (id: number, params?: Record<string, unknown>) => api.get(`/hospitals/${id}/analytics/booking-history`, { params }),
+  getResourceUsagePatterns: (id: number, params?: Record<string, unknown>) => api.get(`/hospitals/${id}/analytics/usage-patterns`, { params }),
+  getPerformanceMetrics: (id: number, params?: Record<string, unknown>) => api.get(`/hospitals/${id}/analytics/performance`, { params }),
 };
 
 // Booking API
 export const bookingAPI = {
-  create: (data: any) => api.post('/bookings', data),
-  getUserBookings: (params?: any) => api.get('/bookings/user', { params }),
+  create: (data: Record<string, unknown>) => api.post('/bookings', data),
+  getUserBookings: (params?: Record<string, unknown>) => api.get('/bookings/user', { params }),
   getMyBookings: () => api.get('/bookings/my-bookings'),
   getById: (id: number) => api.get(`/bookings/${id}`),
-  updateStatus: (id: number, data: any) => api.put(`/bookings/${id}/status`, data),
-  cancel: (id: number, data?: any) => api.put(`/bookings/${id}/cancel`, data),
-  getAll: (params?: any) => api.get('/bookings', { params }),
+  updateStatus: (id: number, data: Record<string, unknown>) => api.put(`/bookings/${id}/status`, data),
+  cancel: (id: number, data?: Record<string, unknown>) => api.put(`/bookings/${id}/cancel`, data),
+  getAll: (params?: Record<string, unknown>) => api.get('/bookings', { params }),
 
   // Payment endpoint
-  processPayment: (data: any) => api.post('/bookings/payment', data),
+  processPayment: (data: Record<string, unknown>) => api.post('/bookings/payment', data),
 
   // Booking approval endpoints
-  getPendingBookings: (hospitalId: number, params?: any) =>
+  getPendingBookings: (hospitalId: number, params?: Record<string, unknown>) =>
     api.get(`/bookings/hospital/${hospitalId}/pending`, { params }),
-  approveBooking: (id: number, data?: any) => api.put(`/bookings/${id}/approve`, data),
-  declineBooking: (id: number, data: any) => api.put(`/bookings/${id}/decline`, data),
-  getBookingHistory: (hospitalId: number, params?: any) =>
+  approveBooking: (id: number, data?: Record<string, unknown>) => api.put(`/bookings/${id}/approve`, data),
+  declineBooking: (id: number, data: Record<string, unknown>) => api.put(`/bookings/${id}/decline`, data),
+  getBookingHistory: (hospitalId: number, params?: Record<string, unknown>) =>
     api.get(`/bookings/hospital/${hospitalId}/history`, { params }),
 };
 
 // Blood Request API
 export const bloodAPI = {
-  createRequest: (data: any) => api.post('/blood/request', data),
-  getAllRequests: (params?: any) => api.get('/blood/requests', { params }),
+  createRequest: (data: Record<string, unknown>) => api.post('/blood/request', data),
+  getAllRequests: (params?: Record<string, unknown>) => api.get('/blood/requests', { params }),
   getMyRequests: () => api.get('/blood/my-requests'),
-  searchRequests: (params: any) => api.get('/blood/requests/search', { params }),
+  searchRequests: (params: Record<string, unknown>) => api.get('/blood/requests/search', { params }),
   getRequestById: (id: number) => api.get(`/blood/requests/${id}`),
-  updateRequestStatus: (id: number, data: any) =>
+  updateRequestStatus: (id: number, data: Record<string, unknown>) =>
     api.put(`/blood/requests/${id}/status`, data),
-  matchDonor: (id: number, data: any) =>
+  matchDonor: (id: number, data: Record<string, unknown>) =>
     api.post(`/blood/requests/${id}/match`, data),
-  updateDonorStatus: (id: number, donorId: number, data: any) =>
+  updateDonorStatus: (id: number, donorId: number, data: Record<string, unknown>) =>
     api.put(`/blood/requests/${id}/donors/${donorId}`, data),
 };
 
 // Auth API
 export const authAPI = {
   login: (data: { email: string; password: string }) => api.post('/auth/login', data),
-  register: (data: any) => api.post('/auth/register', data),
+  register: (data: Record<string, unknown>) => api.post('/auth/register', data),
   getProfile: () => api.get('/auth/profile'),
-  updateProfile: (data: any) => api.put('/auth/profile', data),
-  changePassword: (data: any) => api.put('/auth/change-password', data),
+  updateProfile: (data: Record<string, unknown>) => api.put('/auth/profile', data),
+  changePassword: (data: Record<string, unknown>) => api.put('/auth/change-password', data),
   // Add a method to get user profile with balance
   getUserWithBalance: () => api.get('/auth/profile'),
 };
@@ -163,27 +164,27 @@ export const adminAPI = {
   // Users
   getAllUsers: () => api.get('/admin/users'),
   getUserById: (id: number) => api.get(`/admin/users/${id}`),
-  createUser: (data: any) => api.post('/admin/users', data),
-  updateUser: (id: number, data: any) => api.put(`/admin/users/${id}`, data),
+  createUser: (data: Record<string, unknown>) => api.post('/admin/users', data),
+  updateUser: (id: number, data: Record<string, unknown>) => api.put(`/admin/users/${id}`, data),
   deleteUser: (id: number) => api.delete(`/admin/users/${id}`),
 
   // Hospitals
   getAllHospitals: () => api.get('/admin/hospitals'),
   getHospitalById: (id: number) => api.get(`/admin/hospitals/${id}`),
-  createHospital: (data: any) => api.post('/admin/hospitals', data),
-  updateHospital: (id: number, data: any) => api.put(`/admin/hospitals/${id}`, data),
+  createHospital: (data: Record<string, unknown>) => api.post('/admin/hospitals', data),
+  updateHospital: (id: number, data: Record<string, unknown>) => api.put(`/admin/hospitals/${id}`, data),
   deleteHospital: (id: number) => api.delete(`/admin/hospitals/${id}`),
 
   // Bookings
   getAllBookings: () => api.get('/admin/bookings'),
   getBookingById: (id: number) => api.get(`/admin/bookings/${id}`),
-  updateBooking: (id: number, data: any) => api.put(`/admin/bookings/${id}`, data),
+  updateBooking: (id: number, data: Record<string, unknown>) => api.put(`/admin/bookings/${id}`, data),
   deleteBooking: (id: number) => api.delete(`/admin/bookings/${id}`),
 
   // Blood Requests
   getAllBloodRequests: () => api.get('/admin/blood-requests'),
   getBloodRequestById: (id: number) => api.get(`/admin/blood-requests/${id}`),
-  updateBloodRequest: (id: number, data: any) => api.put(`/admin/blood-requests/${id}`, data),
+  updateBloodRequest: (id: number, data: Record<string, unknown>) => api.put(`/admin/blood-requests/${id}`, data),
   deleteBloodRequest: (id: number) => api.delete(`/admin/blood-requests/${id}`),
 
   // Stats
@@ -194,16 +195,17 @@ export const adminAPI = {
     try {
       const response = await api.get('/admin/hospitals/pending');
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
       console.error('Error fetching pending hospitals:', error);
       throw new Error(
-        error.response?.data?.error || 
+        err.response?.data?.error || 
         'Failed to fetch pending hospitals. Please check your connection and try again.'
       );
     }
   },
 
-  approveHospital: async (id: number, data?: any) => {
+  approveHospital: async (id: number, data?: Record<string, unknown>) => {
     if (!id || isNaN(id)) {
       throw new Error('Invalid hospital ID provided');
     }
@@ -212,21 +214,22 @@ export const adminAPI = {
       try {
         const response = await api.put(`/admin/hospitals/${id}/approve`, data || {});
         return response;
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const err = error as { response?: { status?: number; data?: { error?: string } } };
         console.error(`Error approving hospital ${id}:`, error);
         
         // Handle specific error codes
-        if (error.response?.status === 403) {
+        if (err.response?.status === 403) {
           throw new Error('Access denied. Admin privileges required.');
-        } else if (error.response?.status === 404) {
+        } else if (err.response?.status === 404) {
           throw new Error('Hospital not found or may have been deleted.');
-        } else if (error.response?.status === 409) {
+        } else if (err.response?.status === 409) {
           throw new Error(
-            error.response?.data?.error || 
+            err.response?.data?.error || 
             'Hospital cannot be approved in its current state. It may have already been processed.'
           );
-        } else if (error.response?.data?.error) {
-          throw new Error(error.response.data.error);
+        } else if (err.response?.data?.error) {
+          throw new Error(err.response.data.error);
         } else {
           throw new Error('Failed to approve hospital. Please try again.');
         }
@@ -258,21 +261,22 @@ export const adminAPI = {
           reason: trimmedReason 
         });
         return response;
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const err = error as { response?: { status?: number; data?: { error?: string } } };
         console.error(`Error rejecting hospital ${id}:`, error);
         
         // Handle specific error codes
-        if (error.response?.status === 403) {
+        if (err.response?.status === 403) {
           throw new Error('Access denied. Admin privileges required.');
-        } else if (error.response?.status === 404) {
+        } else if (err.response?.status === 404) {
           throw new Error('Hospital not found or may have been deleted.');
-        } else if (error.response?.status === 409) {
+        } else if (err.response?.status === 409) {
           throw new Error(
-            error.response?.data?.error || 
+            err.response?.data?.error || 
             'Hospital cannot be rejected in its current state. It may have already been processed.'
           );
-        } else if (error.response?.data?.error) {
-          throw new Error(error.response.data.error);
+        } else if (err.response?.data?.error) {
+          throw new Error(err.response.data.error);
         } else {
           throw new Error('Failed to reject hospital. Please try again.');
         }
@@ -284,10 +288,11 @@ export const adminAPI = {
     try {
       const response = await api.get('/admin/hospitals/approval-stats');
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
       console.error('Error fetching approval statistics:', error);
       throw new Error(
-        error.response?.data?.error || 
+        err.response?.data?.error || 
         'Failed to fetch approval statistics. Please check your connection and try again.'
       );
     }
@@ -298,10 +303,11 @@ export const adminAPI = {
     try {
       const response = await api.get(`/admin/hospitals/detailed-analytics?timeRange=${timeRange}`);
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
       console.error('Error fetching detailed analytics:', error);
       throw new Error(
-        error.response?.data?.error || 
+        err.response?.data?.error || 
         'Failed to fetch detailed approval analytics. Please check your connection and try again.'
       );
     }
@@ -312,10 +318,11 @@ export const adminAPI = {
     try {
       const response = await api.get('/admin/hospitals/workflow-efficiency');
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
       console.error('Error fetching workflow efficiency:', error);
       throw new Error(
-        error.response?.data?.error || 
+        err.response?.data?.error || 
         'Failed to fetch workflow efficiency metrics. Please check your connection and try again.'
       );
     }
@@ -323,9 +330,9 @@ export const adminAPI = {
 
   // Admin Balance API
   getAdminBalance: () => api.get('/admin/balance'),
-  getAdminBalanceSummary: (params?: any) => api.get('/admin/balance/summary', { params }),
-  getAdminTransactionHistory: (params?: any) => api.get('/admin/balance/transactions', { params }),
-  processWithdrawal: (data: any) => api.post('/admin/balance/withdraw', data),
+  getAdminBalanceSummary: (params?: Record<string, unknown>) => api.get('/admin/balance/summary', { params }),
+  getAdminTransactionHistory: (params?: Record<string, unknown>) => api.get('/admin/balance/transactions', { params }),
+  processWithdrawal: (data: Record<string, unknown>) => api.post('/admin/balance/withdraw', data),
   initializeAdminBalance: () => api.post('/admin/balance/initialize'),
 };
 
@@ -337,56 +344,56 @@ export const sampleCollectionAPI = {
   getTestTypes: () => api.get('/sample-collection/test-types'),
   getHospitalTestTypes: (hospitalId: number) => api.get(`/sample-collection/hospitals/${hospitalId}/test-types`),
   calculatePricing: (data: { hospitalId: number; testTypeIds: number[] }) => api.post('/sample-collection/calculate-pricing', data),
-  submitRequest: (data: any) => api.post('/sample-collection/submit-request', data),
-  getUserRequests: (params?: any) => api.get('/sample-collection/requests', { params }),
+  submitRequest: (data: Record<string, unknown>) => api.post('/sample-collection/submit-request', data),
+  getUserRequests: (params?: Record<string, unknown>) => api.get('/sample-collection/requests', { params }),
   getRequestById: (requestId: number) => api.get(`/sample-collection/requests/${requestId}`),
   cancelRequest: (requestId: number, reason?: string) => api.put(`/sample-collection/requests/${requestId}/cancel`, { reason }),
 };
 
 // Payment API
 export const paymentAPI = {
-  processPayment: (data: any) => api.post('/payments/process', data),
+  processPayment: (data: Record<string, unknown>) => api.post('/payments/process', data),
   getReceipt: (transactionId: string) => api.get(`/payments/${transactionId}/receipt`),
-  processRefund: (transactionId: string, data: any) => api.post(`/payments/${transactionId}/refund`, data),
-  getPaymentHistory: (userId?: number, params?: any) =>
+  processRefund: (transactionId: string, data: Record<string, unknown>) => api.post(`/payments/${transactionId}/refund`, data),
+  getPaymentHistory: (userId?: number, params?: Record<string, unknown>) =>
     userId ? api.get(`/payments/history/${userId}`, { params }) : api.get('/payments/history', { params }),
-  retryPayment: (transactionId: string, data: any) => api.post(`/payments/${transactionId}/retry`, data),
+  retryPayment: (transactionId: string, data: Record<string, unknown>) => api.post(`/payments/${transactionId}/retry`, data),
   getTransactionDetails: (transactionId: string) => api.get(`/payments/transaction/${transactionId}`),
-  validatePaymentData: (data: any) => api.post('/payments/validate', data),
+  validatePaymentData: (data: Record<string, unknown>) => api.post('/payments/validate', data),
 };
 
 // Pricing API
 export const pricingAPI = {
   getHospitalPricing: (hospitalId: number) => api.get(`/pricing/hospitals/${hospitalId}/pricing`),
-  updateHospitalPricing: (hospitalId: number, data: any) => api.put(`/pricing/hospitals/${hospitalId}/pricing`, data),
-  getPricingHistory: (hospitalId: number, params?: any) => api.get(`/pricing/hospitals/${hospitalId}/pricing/history`, { params }),
-  calculateBookingAmount: (data: any) => api.post('/pricing/calculate', data),
-  bulkUpdatePricing: (hospitalId: number, data: any) => api.post(`/pricing/hospitals/${hospitalId}/pricing/bulk`, data),
-  getPricingComparison: (params?: any) => api.get('/pricing/comparison', { params }),
+  updateHospitalPricing: (hospitalId: number, data: Record<string, unknown>) => api.put(`/pricing/hospitals/${hospitalId}/pricing`, data),
+  getPricingHistory: (hospitalId: number, params?: Record<string, unknown>) => api.get(`/pricing/hospitals/${hospitalId}/pricing/history`, { params }),
+  calculateBookingAmount: (data: Record<string, unknown>) => api.post('/pricing/calculate', data),
+  bulkUpdatePricing: (hospitalId: number, data: Record<string, unknown>) => api.post(`/pricing/hospitals/${hospitalId}/pricing/bulk`, data),
+  getPricingComparison: (params?: Record<string, unknown>) => api.get('/pricing/comparison', { params }),
 };
 
 // Revenue API
 export const revenueAPI = {
-  getHospitalRevenue: (hospitalId: number, params?: any) => api.get(`/revenue/hospital/${hospitalId}`, { params }),
-  getAdminRevenue: (params?: any) => api.get('/revenue/admin', { params }),
-  getFinancialAnalytics: (params?: any) => api.get('/admin/financials', { params }),
-  getAdminServiceCharges: (params?: any) => api.get('/admin/service-charges', { params }),
-  getRevenueAnalytics: (params?: any) => api.get('/revenue/analytics', { params }),
+  getHospitalRevenue: (hospitalId: number, params?: Record<string, unknown>) => api.get(`/revenue/hospital/${hospitalId}`, { params }),
+  getAdminRevenue: (params?: Record<string, unknown>) => api.get('/revenue/admin', { params }),
+  getFinancialAnalytics: (params?: Record<string, unknown>) => api.get('/admin/financials', { params }),
+  getAdminServiceCharges: (params?: Record<string, unknown>) => api.get('/admin/service-charges', { params }),
+  getRevenueAnalytics: (params?: Record<string, unknown>) => api.get('/revenue/analytics', { params }),
   getHospitalBalance: (hospitalId: number) => api.get(`/balances/hospital/${hospitalId}`),
   getAdminBalance: () => api.get('/balances/admin'),
-  getReconciliationReport: (params?: any) => api.get('/revenue/reconciliation', { params }),
-  getLowBalanceAlerts: (params?: any) => api.get('/revenue/low-balance-alerts', { params }),
-  distributeRevenue: (data: any) => api.post('/revenue/distribute', data),
-  bulkDistributeRevenue: (data: any) => api.post('/revenue/bulk-distribute', data),
-  getServiceCharges: (params?: any) => api.get('/revenue/service-charges', { params }),
-  getHospitalDistribution: (params?: any) => api.get('/revenue/hospital-distribution', { params }),
-  getBalanceSummary: (params?: any) => api.get('/revenue/balance-summary', { params }),
-  getAuditTrail: (params?: any) => api.get('/revenue/audit-trail', { params }),
+  getReconciliationReport: (params?: Record<string, unknown>) => api.get('/revenue/reconciliation', { params }),
+  getLowBalanceAlerts: (params?: Record<string, unknown>) => api.get('/revenue/low-balance-alerts', { params }),
+  distributeRevenue: (data: Record<string, unknown>) => api.post('/revenue/distribute', data),
+  bulkDistributeRevenue: (data: Record<string, unknown>) => api.post('/revenue/bulk-distribute', data),
+  getServiceCharges: (params?: Record<string, unknown>) => api.get('/revenue/service-charges', { params }),
+  getHospitalDistribution: (params?: Record<string, unknown>) => api.get('/revenue/hospital-distribution', { params }),
+  getBalanceSummary: (params?: Record<string, unknown>) => api.get('/revenue/balance-summary', { params }),
+  getAuditTrail: (params?: Record<string, unknown>) => api.get('/revenue/audit-trail', { params }),
 };
 
 // Notification API
 export const notificationAPI = {
-  getUserNotifications: (params?: any) => api.get('/notifications', { params }),
+  getUserNotifications: (params?: Record<string, unknown>) => api.get('/notifications', { params }),
   getUnreadCount: () => api.get('/notifications/unread-count'),
   markAsRead: (id: number) => api.put(`/notifications/${id}/read`),
   markAllAsRead: () => api.put('/notifications/mark-all-read'),
@@ -395,11 +402,11 @@ export const notificationAPI = {
 
 // Audit API
 export const auditAPI = {
-  getEntityAuditTrail: (entityType: string, entityId: number, params?: any) =>
+  getEntityAuditTrail: (entityType: string, entityId: number, params?: Record<string, unknown>) =>
     api.get(`/audit/entity/${entityType}/${entityId}`, { params }),
-  getApprovalMetrics: (params?: any) => api.get('/audit/metrics/approval', { params }),
+  getApprovalMetrics: (params?: Record<string, unknown>) => api.get('/audit/metrics/approval', { params }),
   getApprovalEfficiency: () => api.get('/audit/efficiency/approval'),
-  getUserAuditTrail: (userId: number, params?: any) =>
+  getUserAuditTrail: (userId: number, params?: Record<string, unknown>) =>
     api.get(`/audit/user/${userId}`, { params }),
 };
 

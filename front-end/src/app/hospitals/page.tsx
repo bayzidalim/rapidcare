@@ -62,22 +62,23 @@ export default function HospitalsPage() {
             const pricingData = pricingResponse.data.data;
             
             // Organize pricing by resource type (handle both 'bed'/'beds' variations)
+            type PricingItem = { resourceType?: string; baseRate?: number; hourlyRate?: number; minimumCharge?: number; maximumCharge?: number; currency?: string };
             const pricing = {
-              beds: pricingData.find((p: any) => p.resourceType === 'beds' || p.resourceType === 'bed') || {
+              beds: pricingData.find((p: PricingItem) => p.resourceType === 'beds' || p.resourceType === 'bed') || {
                 baseRate: 0,
                 hourlyRate: 0,
                 minimumCharge: 0,
                 maximumCharge: 0,
                 currency: 'BDT'
               },
-              icu: pricingData.find((p: any) => p.resourceType === 'icu') || {
+              icu: pricingData.find((p: PricingItem) => p.resourceType === 'icu') || {
                 baseRate: 0,
                 hourlyRate: 0,
                 minimumCharge: 0,
                 maximumCharge: 0,
                 currency: 'BDT'
               },
-              operationTheatres: pricingData.find((p: any) => p.resourceType === 'operationTheatres' || p.resourceType === 'operationTheater') || {
+              operationTheatres: pricingData.find((p: PricingItem) => p.resourceType === 'operationTheatres' || p.resourceType === 'operationTheater') || {
                 baseRate: 0,
                 hourlyRate: 0,
                 minimumCharge: 0,
@@ -105,7 +106,7 @@ export default function HospitalsPage() {
   const handleSearch = async () => {
     try {
       setLoading(true);
-      const params: any = {};
+      const params: Record<string, string> = {};
       if (searchQuery) params.q = searchQuery;
       if (selectedCity && selectedCity !== 'all') params.city = selectedCity;
       if (selectedService && selectedService !== 'all') params.service = selectedService;
@@ -153,7 +154,7 @@ export default function HospitalsPage() {
     }).format(price);
   };
 
-  const getPricingDisplay = (pricing: any) => {
+  const getPricingDisplay = (pricing: { baseRate?: number; hourlyRate?: number; currency?: string } | undefined) => {
     if (!pricing || pricing.baseRate === 0) return 'Pricing not available';
     
     const basePrice = formatPrice(pricing.baseRate, pricing.currency);

@@ -72,11 +72,12 @@ export function ReviewForm({
       
       onSuccess?.();
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
       console.error('Error submitting review:', error);
       toast({
         title: "Error",
-        description: error.response?.data?.error || "Failed to submit review. Please try again.",
+        description: err.response?.data?.error || "Failed to submit review. Please try again.",
         variant: "destructive",
       });
     } finally {

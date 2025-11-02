@@ -13,7 +13,7 @@ interface ValidationResult {
   passed: boolean;
   duration: number;
   error?: string;
-  metrics?: any;
+  metrics?: Record<string, unknown>;
 }
 
 class HydrationValidator {

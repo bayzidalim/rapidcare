@@ -94,7 +94,7 @@ export default function DashboardPage() {
         } else {
           setBookings([]);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Handle 401/403 errors specifically (authentication issues)
         if (error.response?.status === 401 || error.response?.status === 403) {
           // Token might be expired, redirect to login
@@ -121,7 +121,7 @@ export default function DashboardPage() {
         } else {
           setBloodRequests([]);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error fetching blood requests:', error?.message || error);
         console.log('Blood requests error details:', {
           status: error.response?.status,
@@ -148,7 +148,7 @@ export default function DashboardPage() {
       try {
         console.log('Fetching payment history...');
         await fetchPaymentHistory();
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error fetching payment history:', error?.message || error);
         console.log('Payment history error details:', {
           status: error.response?.status,
@@ -177,7 +177,7 @@ export default function DashboardPage() {
         try {
           console.log('Fetching hospital data for authority user...');
           await fetchHospitalData();
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error('Error fetching hospital data:', error?.message || error);
           console.log('Hospital data error details:', {
             status: error.response?.status,
@@ -200,7 +200,7 @@ export default function DashboardPage() {
           }
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle 401/403 errors specifically (authentication issues)
       if (error.response?.status === 401 || error.response?.status === 403) {
         // Token might be expired, redirect to login
@@ -225,7 +225,7 @@ export default function DashboardPage() {
       if (response.data && response.data.success) {
         setHospital(response.data.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle 401/403 errors specifically (authentication issues)
       if (error.response?.status === 401 || error.response?.status === 403) {
         // Token might be expired, redirect to login
@@ -256,7 +256,7 @@ export default function DashboardPage() {
       if (response.data && response.data.success) {
         setTransactions(response.data.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle 401/403 errors specifically (authentication issues)
       if (error.response?.status === 401 || error.response?.status === 403) {
         // Token might be expired, redirect to login
