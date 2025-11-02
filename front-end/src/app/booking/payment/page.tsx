@@ -949,7 +949,7 @@ export default function PaymentPage() {
                                 This service is exclusively available for patients aged 60 and above.
                               </p>
                               <p className="text-xs text-gray-500">
-                                Current patient age: {bookingData.age} years (Minimum required: 60 years)
+                                Current patient age: {bookingData.patientAge} years (Minimum required: 60 years)
                               </p>
                             </div>
                           </CardContent>
@@ -958,7 +958,7 @@ export default function PaymentPage() {
                     )}
 
                     {/* Handle missing age information */}
-                    {(bookingData.age == null || bookingData.age === undefined) && (
+                    {(bookingData.patientAge == null || bookingData.patientAge === undefined) && (
                       <div className="border-t pt-4">
                         <h3 className="text-lg font-semibold mb-4 flex items-center text-gray-900">
                           <Plus className="w-5 h-5 mr-2 text-gray-400" />
