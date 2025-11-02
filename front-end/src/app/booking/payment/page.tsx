@@ -469,7 +469,7 @@ export default function PaymentPage() {
 
       // Validate senior citizen eligibility (60+)
       if (!isSeniorCitizen(bookingData.patientAge)) {
-        handleRapidAssistanceError('age_ineligible', bookingData.patientAge);
+        handleRapidAssistanceError('age_ineligible', bookingData.patientAge ?? undefined);
         return false;
       }
     }
@@ -883,7 +883,7 @@ export default function PaymentPage() {
 
                                           // Validate senior citizen eligibility (60+)
                                           if (!isSeniorCitizen(bookingData.patientAge)) {
-                                            handleRapidAssistanceError('age_ineligible', bookingData.patientAge);
+                                            handleRapidAssistanceError('age_ineligible', bookingData.patientAge ?? undefined);
                                             return;
                                           }
                                         }
