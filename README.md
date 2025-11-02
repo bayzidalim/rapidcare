@@ -18,6 +18,7 @@ Emergency Care, Delivered Fast. A comprehensive emergency medical resource booki
 ### Core Functionality
 - **Real-time Hospital Search**: Find hospitals with available resources
 - **Resource Booking**: Book beds, ICUs, and operation theatres
+- **Rapid Collection**: Home sample collection service for medical tests (accessible to all users)
 - **Surgeon Availability**: Check and book qualified surgeons
 - **Blood Donation Network**: Request and manage blood donations
 - **User Dashboard**: Track all bookings and requests
@@ -74,6 +75,7 @@ rapidcare/
 │   │   │   ├── dashboard/              # User dashboard
 │   │   │   ├── hospitals/              # Hospital listings
 │   │   │   ├── login/                  # Authentication
+│   │   │   ├── rapid-collection/       # Sample collection service
 │   │   │   └── ...                     # Other pages
 │   │   ├── components/                 # Reusable React components
 │   │   │   ├── ui/                     # shadcn/ui components
@@ -215,6 +217,16 @@ docker-compose up --build
 - `PUT /api/blood/requests/:id/status` - Update blood request status
 - `POST /api/blood/requests/:id/match` - Match donor to blood request
 
+### Sample Collection Endpoints
+- `GET /api/sample-collection/hospitals` - Get hospitals with sample collection service
+- `GET /api/sample-collection/test-types` - Get all available test types
+- `GET /api/sample-collection/hospitals/:hospitalId/test-types` - Get test types for specific hospital
+- `POST /api/sample-collection/calculate-pricing` - Calculate pricing for selected tests
+- `POST /api/sample-collection/submit-request` - Submit sample collection request (no auth required)
+- `GET /api/sample-collection/requests` - Get user's collection requests (authenticated)
+- `GET /api/sample-collection/requests/:requestId` - Get specific collection request (authenticated)
+- `PUT /api/sample-collection/requests/:requestId/cancel` - Cancel collection request (authenticated)
+
 ## 🎨 UI Components
 
 The frontend uses shadcn/ui components for a consistent design:
@@ -354,9 +366,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For support and questions:
 - Create an issue in the repository
-- Check the [API documentation](docs/API.md)
-- Review the [deployment guide](DEPLOYMENT.md)
-- See [contributing guidelines](CONTRIBUTING.md)
+- Check the [API Integration Guide](API_INTEGRATION_GUIDE.md)
+- Review the [Rapid Collection Feature Documentation](RAPID_COLLECTION_FEATURE.md)
+- See the [deployment guide](DEPLOYMENT.md)
+- Review [contributing guidelines](CONTRIBUTING.md)
 
 ## 🙏 Acknowledgments
 
@@ -372,4 +385,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**RapidCare** - Emergency Care, Delivered Fast 🚑 
+**RapidCare** - Emergency Care, Delivered Fast 🚑 # rapidcare
