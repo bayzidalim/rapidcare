@@ -1,0 +1,925 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-11-02"
+  },
+  "categories": [
+    {
+      "id": "pain-fever",
+      "name": "Pain & Fever Management",
+      "description": "Analgesic and antipyretic medicines that reduce pain and fever across common illnesses.",
+      "medicines": [
+        {
+          "brandName": "Napa",
+          "genericName": "Paracetamol",
+          "aliases": ["Acetaminophen"],
+          "commonStrengths": ["500 mg", "665 mg (Extend)", "120 mg/5ml Suspension", "80 mg/ml Paediatric Drops"],
+          "dosageForms": ["Tablet", "Suspension", "Suppository", "Paediatric Drops"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "General pain relief and reduction of fever.",
+          "whyPrescribed": "Preferred first-line for mild to moderate pain and fever because of its strong safety profile when dosed correctly.",
+          "patientGuidance": "Maintain at least 4-hour intervals between doses and avoid taking with other paracetamol-containing products."
+        },
+        {
+          "brandName": "Ace",
+          "genericName": "Paracetamol",
+          "commonStrengths": ["500 mg", "665 mg (Extend)", "120 mg/5ml Suspension"],
+          "dosageForms": ["Tablet", "Suspension"],
+          "company": "Aristopharma Ltd.",
+          "use": "Pain relief and fever reduction.",
+          "whyPrescribed": "Offers quick relief for fever spikes and musculoskeletal pain episodes.",
+          "patientGuidance": "Swallow with water after food if the stomach is sensitive; monitor total daily dose (max 4 g for adults)."
+        },
+        {
+          "brandName": "Xel-Z",
+          "genericName": "Paracetamol",
+          "commonStrengths": ["500 mg", "665 mg (ER)"],
+          "dosageForms": ["Tablet"],
+          "company": "Beximco Pharmaceuticals Ltd.",
+          "use": "Pain relief and fever reduction.",
+          "whyPrescribed": "Extended-release option helps maintain steady fever control, particularly overnight.",
+          "patientGuidance": "Do not crush extended-release tablets; take whole with water."
+        },
+        {
+          "brandName": "Flexi",
+          "genericName": "Ibuprofen",
+          "commonStrengths": ["200 mg", "400 mg"],
+          "dosageForms": ["Tablet", "Suspension"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "NSAID for pain, inflammation, and fever.",
+          "whyPrescribed": "Chosen when inflammation or muscle injury is suspected along with pain.",
+          "patientGuidance": "Take with food to reduce stomach irritation; avoid if you have kidney issues or gastric ulcers."
+        },
+        {
+          "brandName": "Ketorolac",
+          "genericName": "Ketorolac Tromethamine",
+          "commonStrengths": ["10 mg"],
+          "dosageForms": ["Tablet", "Injection"],
+          "company": "Multiple manufacturers",
+          "use": "Short-term management of moderate to severe acute pain.",
+          "whyPrescribed": "Used when pain is not controlled by weaker NSAIDs, typically for short courses post-surgery or injury.",
+          "patientGuidance": "Limit use to ≤5 days due to bleeding and kidney risks; avoid combining with other NSAIDs."
+        },
+        {
+          "brandName": "A-Fenac",
+          "genericName": "Diclofenac Sodium",
+          "aliases": ["A-Fenac Tablet", "A-Fenac Injection", "A-Fenac Gel"],
+          "commonStrengths": ["25 mg Tablet", "50 mg Tablet", "75 mg/3 ml IM Injection", "12.5 mg Suppository", "50 mg Suppository", "1% w/w Gel"],
+          "dosageForms": ["Tablet", "IM Injection", "Suppository", "Topical Gel"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "NSAID for musculoskeletal pain, inflammation, and post-operative discomfort.",
+          "whyPrescribed": "Multiple dosage forms allow flexible titration and targeted relief when oral intake is limited.",
+          "patientGuidance": "Take tablets after meals with water, apply gel only on intact skin, and reserve injections for clinician supervision."
+        },
+        {
+          "brandName": "A-Fenac SR",
+          "genericName": "Diclofenac Sodium",
+          "commonStrengths": ["100 mg"],
+          "dosageForms": ["Sustained Release Tablet"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Once-daily anti-inflammatory coverage for chronic arthritis and soft tissue pain.",
+          "whyPrescribed": "Sustained-release formulation maintains steadier plasma levels and improves adherence in long-term therapy.",
+          "patientGuidance": "Swallow whole after food, do not crush or split, and monitor for stomach pain or indigestion."
+        },
+        {
+          "brandName": "A-Fenac K",
+          "genericName": "Diclofenac Potassium",
+          "commonStrengths": ["50 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Fast-acting NSAID for acute musculoskeletal and dental pain.",
+          "whyPrescribed": "Potassium salt dissolves quickly, offering a faster onset of analgesia than standard diclofenac sodium tablets.",
+          "patientGuidance": "Take with food to reduce gastric irritation and avoid using alongside other NSAIDs or anticoagulants."
+        },
+        {
+          "brandName": "A-Fenac Plus",
+          "genericName": "Diclofenac Sodium + Lidocaine Hydrochloride",
+          "commonStrengths": ["(75 mg + 20 mg)/2 ml"],
+          "dosageForms": ["IM Injection"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Parenteral analgesic for severe acute pain when oral therapy is not feasible.",
+          "whyPrescribed": "Combines diclofenac's anti-inflammatory effect with lidocaine to minimise injection-site discomfort and provide rapid relief.",
+          "patientGuidance": "Administer intramuscularly by healthcare professionals only; observe for allergic reactions or local numbness."
+        },
+        {
+          "brandName": "A-One",
+          "genericName": "Paracetamol",
+          "commonStrengths": ["120 mg/5 ml Suspension"],
+          "dosageForms": ["Oral Suspension"],
+          "company": "Apex Pharmaceuticals Ltd.",
+          "use": "Reduces fever and relieves mild pain in children.",
+          "whyPrescribed": "Palatable suspension allows weight-based pediatric dosing when tablets are inappropriate.",
+          "patientGuidance": "Use the supplied measuring device, keep at least 4-hour intervals between doses, and do not exceed the recommended daily amount."
+        },
+        {
+          "brandName": "A-One Plus",
+          "genericName": "Paracetamol + Caffeine",
+          "commonStrengths": ["500 mg + 65 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Apex Pharmaceuticals Ltd.",
+          "use": "Relieves tension headaches, migraine attacks, and fatigue-associated pain.",
+          "whyPrescribed": "Caffeine enhances paracetamol's analgesic effect and counteracts drowsiness, improving relief in refractory headaches.",
+          "patientGuidance": "Limit total daily paracetamol intake, avoid late-evening doses due to caffeine, and monitor for palpitations."
+        },
+        {
+          "brandName": "A-One XR",
+          "genericName": "Paracetamol",
+          "commonStrengths": ["665 mg"],
+          "dosageForms": ["Extended Release Tablet"],
+          "company": "Apex Pharmaceuticals Ltd.",
+          "use": "Provides prolonged relief from chronic pain or persistent fever episodes.",
+          "whyPrescribed": "Extended-release matrix delivers paracetamol over 6–8 hours, reducing dosing frequency in chronic conditions.",
+          "patientGuidance": "Swallow whole without crushing, maintain dosing intervals, and track cumulative paracetamol from all sources."
+        },
+        {
+          "brandName": "A-Pak",
+          "genericName": "Aceclofenac",
+          "commonStrengths": ["100 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Benham Pharmaceuticals Ltd.",
+          "use": "NSAID for osteoarthritis, rheumatoid arthritis, and ankylosing spondylitis pain.",
+          "whyPrescribed": "Aceclofenac offers potent anti-inflammatory action with comparatively favourable gastrointestinal tolerability.",
+          "patientGuidance": "Take after meals, avoid concurrent NSAIDs, and report persistent stomach upsets or swelling."
+        },
+        {
+          "brandName": "A-Pak SR",
+          "genericName": "Aceclofenac",
+          "commonStrengths": ["200 mg"],
+          "dosageForms": ["Sustained Release Tablet"],
+          "company": "Benham Pharmaceuticals Ltd.",
+          "use": "Once-daily regimen for sustained control of chronic inflammatory pain.",
+          "whyPrescribed": "Sustained-release formulation maintains therapeutic levels across the day, enhancing adherence for long-term therapy.",
+          "patientGuidance": "Swallow whole with water, do not break or chew, and monitor for signs of fluid retention or gastrointestinal bleeding."
+        },
+        {
+          "brandName": "Maclo",
+          "genericName": "Aceclofenac",
+          "commonStrengths": ["100 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Doctor’s Chemical Works Ltd.",
+          "use": "Relieves pain and swelling associated with osteoarthritis, rheumatoid arthritis, and musculoskeletal injury.",
+          "whyPrescribed": "Provides potent COX-2 selective anti-inflammatory activity with a tolerable GI profile for chronic use when other NSAIDs are unsuitable.",
+          "patientGuidance": "Take after meals with water, avoid combining with other NSAIDs, and report indigestion, black stool, or edema promptly."
+        }
+      ]
+    },
+    {
+      "id": "gastric-digestive",
+      "name": "Gastric & Digestive Health",
+      "description": "Medicines that reduce stomach acid, support digestion, and manage nausea or reflux.",
+      "medicines": [
+        {
+          "brandName": "Esomep",
+          "genericName": "Esomeprazole",
+          "commonStrengths": ["20 mg", "40 mg"],
+          "dosageForms": ["Tablet", "Capsule", "IV Injection"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Reduces stomach acid, treats GERD, ulcers, and heartburn.",
+          "whyPrescribed": "Helps heal erosive esophagitis and prevents acid-related damage during chronic symptoms.",
+          "patientGuidance": "Take 30 minutes before meals, preferably breakfast."
+        },
+        {
+          "brandName": "Nexum",
+          "genericName": "Esomeprazole",
+          "commonStrengths": ["20 mg", "40 mg"],
+          "dosageForms": ["Tablet", "Capsule", "IV Injection"],
+          "company": "Beximco Pharmaceuticals Ltd.",
+          "use": "Reduces stomach acid and heals reflux-related damage.",
+          "whyPrescribed": "Alternative brand to maintain therapy continuity when cost or availability changes.",
+          "patientGuidance": "Do not crush the tablet; complete the prescribed course even if symptoms improve early."
+        },
+        {
+          "brandName": "Losectil",
+          "genericName": "Omeprazole",
+          "commonStrengths": ["20 mg", "40 mg"],
+          "dosageForms": ["Capsule", "IV Injection"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Treats indigestion, heartburn, and ulcers by reducing stomach acid.",
+          "whyPrescribed": "First-line proton pump inhibitor for chronic gastritis or ulcer protection when on NSAIDs.",
+          "patientGuidance": "Take before meals; long-term use should be reviewed to monitor for vitamin deficiencies."
+        },
+        {
+          "brandName": "Pantonix",
+          "genericName": "Pantoprazole",
+          "commonStrengths": ["20 mg", "40 mg"],
+          "dosageForms": ["Tablet", "IV Injection"],
+          "company": "Incepta Pharmaceuticals Ltd.",
+          "use": "Reduces stomach acid for GERD and ulcers.",
+          "whyPrescribed": "Preferred when patients have better tolerance to pantoprazole or need once-daily dosing.",
+          "patientGuidance": "Avoid alcohol and spicy meals that can trigger reflux."
+        },
+        {
+          "brandName": "Rabep",
+          "genericName": "Rabeprazole",
+          "commonStrengths": ["10 mg", "20 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "ACI Limited",
+          "use": "Targets excessive stomach acid and GERD.",
+          "whyPrescribed": "Considered when rapid acid suppression is needed or other PPIs did not respond.",
+          "patientGuidance": "Take once daily; report persistent diarrhoea or stomach pain to your doctor."
+        },
+        {
+          "brandName": "Seclo",
+          "genericName": "Omeprazole",
+          "commonStrengths": ["20 mg", "40 mg"],
+          "dosageForms": ["Capsule"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Reduces stomach acid and supports ulcer healing.",
+          "whyPrescribed": "Stable formulation for long-term maintenance therapy in chronic acid reflux.",
+          "patientGuidance": "Monitor for symptom relief within 3-5 days; continue lifestyle changes (smaller meals, early dinner)."
+        },
+        {
+          "brandName": "Omep",
+          "genericName": "Omeprazole",
+          "commonStrengths": ["20 mg", "40 mg"],
+          "dosageForms": ["Capsule"],
+          "company": "Opsonin Pharma Ltd.",
+          "use": "Reduces stomach acid for indigestion and ulcers.",
+          "whyPrescribed": "Alternative brand for affordability or supply preferences.",
+          "patientGuidance": "Prefer morning dosing; avoid abrupt discontinuation after long-term use—consult doctor."
+        },
+        {
+          "brandName": "Fimotac",
+          "genericName": "Famotidine",
+          "commonStrengths": ["20 mg", "40 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "H2 blocker reducing stomach acid for ulcers and heartburn.",
+          "whyPrescribed": "Used for nighttime acid control or when PPIs are contraindicated.",
+          "patientGuidance": "Can be taken with or without food; avoid simultaneous antacid use without doctor advice."
+        },
+        {
+          "brandName": "Motigut",
+          "genericName": "Domperidone",
+          "commonStrengths": ["10 mg"],
+          "dosageForms": ["Tablet", "Suspension", "Suppository"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Treats nausea, vomiting, and improves stomach emptying.",
+          "whyPrescribed": "Helps relieve bloating and early fullness by promoting gastric motility.",
+          "patientGuidance": "Take 15-30 minutes before meals; report palpitations or dizziness immediately."
+        },
+        {
+          "brandName": "Domiren",
+          "genericName": "Domperidone",
+          "commonStrengths": ["10 mg"],
+          "dosageForms": ["Tablet", "Suspension"],
+          "company": "Incepta Pharmaceuticals Ltd.",
+          "use": "Treats nausea, vomiting, and indigestion.",
+          "whyPrescribed": "Alternate supply for prokinetic therapy to manage gastroparesis-like symptoms.",
+          "patientGuidance": "Limit to short-term use unless advised; avoid with strong CYP3A4 inhibitors."
+        },
+        {
+          "brandName": "A-Meb",
+          "genericName": "Mebeverine Hydrochloride",
+          "commonStrengths": ["135 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Provides antispasmodic relief for irritable bowel syndrome and functional abdominal cramps.",
+          "whyPrescribed": "Targets smooth muscle spasm in the gut without affecting normal peristalsis, improving IBS symptom control.",
+          "patientGuidance": "Take 20 minutes before meals, swallow whole without chewing, and continue dietary fibre and hydration measures."
+        },
+        {
+          "brandName": "Macolax",
+          "genericName": "Polyethylene Glycol 3350 + Electrolytes",
+          "commonStrengths": ["(13.125 g + 350.7 mg + 178.5 mg + 46.6 mg)/25 ml"],
+          "dosageForms": ["Oral Solution"],
+          "company": "Opsonin Pharma Ltd.",
+          "use": "Bowel cleansing solution for constipation relief and colonoscopy preparation.",
+          "whyPrescribed": "High-molecular-weight PEG draws water into the bowel while balanced electrolytes prevent significant fluid and electrolyte shifts.",
+          "patientGuidance": "Dilute as directed, drink adequate clear fluids throughout therapy, and expect loose stools within hours."
+        },
+        {
+          "brandName": "Macrosol",
+          "genericName": "Polyethylene Glycol 3350 + Electrolytes",
+          "commonStrengths": ["(13.125 g + 350.7 mg + 178.5 mg + 46.6 mg)/25 ml"],
+          "dosageForms": ["Oral Solution"],
+          "company": "Popular Pharmaceuticals Ltd.",
+          "use": "Osmotic laxative for rapid relief of constipation and bowel emptying prior to diagnostic procedures.",
+          "whyPrescribed": "Provides a ready-to-use PEG-electrolyte formulation suitable for patients requiring predictable catharsis, especially during colonoscopy prep.",
+          "patientGuidance": "Follow the full dosing schedule, drink extra clear liquids to maintain hydration, and discontinue if severe abdominal pain occurs."
+        }
+      ]
+    },
+    {
+      "id": "anti-infectives",
+      "name": "Anti-Infectives",
+      "description": "Antibiotics, antifungals, and antivirals used to control infections under physician guidance.",
+      "medicines": [
+        {
+          "brandName": "Suprax",
+          "genericName": "Cefixime",
+          "commonStrengths": ["200 mg", "400 mg"],
+          "dosageForms": ["Tablet", "Suspension"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Treats respiratory and urinary tract infections.",
+          "whyPrescribed": "Effective once or twice daily dosing for susceptible bacterial infections.",
+          "patientGuidance": "Complete the full course even if symptoms improve; may cause mild digestive upset."
+        },
+        {
+          "brandName": "Zimax",
+          "genericName": "Azithromycin",
+          "commonStrengths": ["250 mg", "500 mg"],
+          "dosageForms": ["Tablet", "Suspension"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Broad-spectrum antibiotic for respiratory and skin infections.",
+          "whyPrescribed": "Short-course therapy (typically 3-5 days) with good tissue penetration.",
+          "patientGuidance": "Take on an empty stomach for better absorption; avoid antacids within 2 hours."
+        },
+        {
+          "brandName": "Axet",
+          "genericName": "Cefuroxime Axetil",
+          "commonStrengths": ["250 mg", "500 mg"],
+          "dosageForms": ["Tablet", "Suspension"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Treats respiratory, ear, and skin infections.",
+          "whyPrescribed": "Second-generation cephalosporin for resistant organisms.",
+          "patientGuidance": "Take after food to enhance absorption; report allergic reactions immediately."
+        },
+        {
+          "brandName": "Tridosil",
+          "genericName": "Azithromycin",
+          "commonStrengths": ["250 mg", "500 mg"],
+          "dosageForms": ["Tablet", "Suspension"],
+          "company": "Incepta Pharmaceuticals Ltd.",
+          "use": "Broad-spectrum antibiotic for upper respiratory and skin infections.",
+          "whyPrescribed": "Alternative brand to maintain therapy continuity when travel or cost factors arise.",
+          "patientGuidance": "Follow the exact dosing schedule to prevent resistance; stay hydrated."
+        },
+        {
+          "brandName": "Tazocin",
+          "genericName": "Piperacillin + Tazobactam",
+          "commonStrengths": ["2.25 gm", "4.5 gm"],
+          "dosageForms": ["IV Injection"],
+          "company": "Beximco Pharmaceuticals Ltd.",
+          "use": "Potent antibiotic for severe hospital infections.",
+          "whyPrescribed": "Combination therapy covering resistant gram-negative and anaerobic bacteria.",
+          "patientGuidance": "Administered in hospital; monitor for signs of allergic reaction or diarrhoea."
+        },
+        {
+          "brandName": "Ciprocin",
+          "genericName": "Ciprofloxacin",
+          "commonStrengths": ["250 mg", "500 mg"],
+          "dosageForms": ["Tablet", "IV Infusion", "Eye/Ear Drops"],
+          "company": "Beximco Pharmaceuticals Ltd.",
+          "use": "Treats urinary, respiratory, and skin infections.",
+          "whyPrescribed": "Chosen for culture-sensitive gram-negative infections.",
+          "patientGuidance": "Avoid dairy or antacids near dosing; watch for tendon pain and limit sunlight exposure."
+        },
+        {
+          "brandName": "Moxaclav",
+          "genericName": "Amoxicillin + Clavulanic Acid",
+          "commonStrengths": ["375 mg", "625 mg"],
+          "dosageForms": ["Tablet", "Suspension"],
+          "company": "Incepta Pharmaceuticals Ltd.",
+          "use": "Broad coverage for resistant bacterial infections.",
+          "whyPrescribed": "Clavulanic acid protects the antibiotic from degradation by resistant bacteria.",
+          "patientGuidance": "Take at meal start to reduce stomach upset; note possible diarrhoea."
+        },
+        {
+          "brandName": "Ominax",
+          "genericName": "Cefixime",
+          "commonStrengths": ["200 mg", "400 mg"],
+          "dosageForms": ["Tablet", "Suspension"],
+          "company": "Renata PLC",
+          "use": "Treats various bacterial infections.",
+          "whyPrescribed": "Alternative cefixime brand for continuity when availability shifts.",
+          "patientGuidance": "Complete full course; keep suspension refrigerated if instructed."
+        },
+        {
+          "brandName": "Flucon",
+          "genericName": "Fluconazole",
+          "commonStrengths": ["150 mg"],
+          "dosageForms": ["Capsule"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Treats systemic and mucosal fungal infections.",
+          "whyPrescribed": "Single-dose therapy for uncomplicated candidiasis or longer courses for systemic infection.",
+          "patientGuidance": "Report rash or liver-related symptoms; avoid alcohol during therapy."
+        },
+        {
+          "brandName": "A-Flox",
+          "genericName": "Flucloxacillin Sodium",
+          "aliases": ["A-Flox Capsule", "A-Flox Suspension"],
+          "commonStrengths": ["250 mg Capsule", "500 mg Capsule", "125 mg/5 ml Suspension", "500 mg/vial Powder for Injection"],
+          "dosageForms": ["Capsule", "Oral Suspension", "Powder for IM/IV Injection"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Narrow-spectrum penicillin for beta-lactamase producing staphylococcal infections.",
+          "whyPrescribed": "Stable to penicillinase, making it useful against MSSA skin, soft tissue, and bone infections.",
+          "patientGuidance": "Administer on an empty stomach for best absorption and complete the full prescribed course."
+        },
+        {
+          "brandName": "A-Mectin",
+          "genericName": "Ivermectin",
+          "commonStrengths": ["6 mg", "12 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Antiparasitic therapy for strongyloidiasis, onchocerciasis, and scabies outbreaks.",
+          "whyPrescribed": "High efficacy and single-dose convenience improve compliance in mass treatment campaigns.",
+          "patientGuidance": "Take on an empty stomach with water and monitor for transient itching or dizziness after dosing."
+        },
+        {
+          "brandName": "A-Migel",
+          "genericName": "Miconazole Nitrate",
+          "commonStrengths": ["2% w/w"],
+          "dosageForms": ["Oral Gel"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Topical antifungal for oral thrush and denture stomatitis.",
+          "whyPrescribed": "Adheres to the oral mucosa for prolonged contact, offering high local concentrations with minimal systemic exposure.",
+          "patientGuidance": "Retain gel in the mouth as long as possible before swallowing and continue treatment for 2 days after symptoms resolve."
+        },
+        {
+          "brandName": "A-Mycin Oral",
+          "genericName": "Erythromycin",
+          "commonStrengths": ["125 mg/5 ml Suspension", "200 mg/5 ml Drops"],
+          "dosageForms": ["Oral Suspension", "Paediatric Drops"],
+          "company": "Aristopharma Ltd.",
+          "use": "Macrolide antibiotic for respiratory, skin, and pertussis infections in children.",
+          "whyPrescribed": "Suitable alternative for penicillin-allergic patients and offers palatable formulations for pediatric dosing.",
+          "patientGuidance": "Shake well before use, measure doses carefully, and give on an empty stomach unless upset occurs."
+        },
+        {
+          "brandName": "A-Mycin Lotion",
+          "genericName": "Erythromycin",
+          "commonStrengths": ["3% w/v"],
+          "dosageForms": ["Topical Lotion"],
+          "company": "Aristopharma Ltd.",
+          "use": "Topical antibiotic for inflammatory acne lesions.",
+          "whyPrescribed": "Delivers targeted antimicrobial action to reduce Propionibacterium acnes load and inflammation.",
+          "patientGuidance": "Apply to clean, dry skin twice daily and avoid contact with eyes or mucous membranes."
+        },
+        {
+          "brandName": "A-Phenicol",
+          "genericName": "Chloramphenicol",
+          "commonStrengths": ["0.5%"],
+          "dosageForms": ["Ophthalmic Solution"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Broad-spectrum ophthalmic antibiotic for bacterial conjunctivitis.",
+          "whyPrescribed": "Provides rapid coverage against common ocular pathogens with minimal systemic absorption.",
+          "patientGuidance": "Instil the prescribed drops into the affected eye(s), avoid touching the dropper tip, and discontinue contact lens use during treatment."
+        },
+        {
+          "brandName": "A-Phenicol D",
+          "genericName": "Dexamethasone + Chloramphenicol",
+          "commonStrengths": ["0.1% + 0.5%"],
+          "dosageForms": ["Ophthalmic Solution"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Combines anti-inflammatory and antibacterial action for post-operative or severe ocular infections.",
+          "whyPrescribed": "Corticosteroid component reduces inflammation while chloramphenicol treats the underlying infection in one preparation.",
+          "patientGuidance": "Use under ophthalmologist supervision, adhere to duration limits, and monitor for signs of raised intraocular pressure."
+        },
+        {
+          "brandName": "Macazi",
+          "genericName": "Azithromycin Dihydrate",
+          "commonStrengths": ["500 mg Tablet", "200 mg/5 ml Suspension"],
+          "dosageForms": ["Tablet", "Powder for Suspension"],
+          "company": "Pacific Pharmaceuticals Ltd.",
+          "use": "Macrolide antibiotic for community-acquired pneumonia, ENT, and skin infections.",
+          "whyPrescribed": "Once-daily dosing with excellent tissue penetration offers convenient short-course therapy and high compliance.",
+          "patientGuidance": "Take tablets at least 1 hour before or 2 hours after food, mix suspension with the measured water volume, and complete the full course."
+        },
+        {
+          "brandName": "Macery",
+          "genericName": "Erythromycin",
+          "commonStrengths": ["250 mg Tablet", "500 mg Tablet", "125 mg/5 ml Suspension"],
+          "dosageForms": ["Tablet", "Powder for Suspension"],
+          "company": "Pacific Pharmaceuticals Ltd.",
+          "use": "Macrolide therapy for respiratory, skin, and pertussis infections, especially in penicillin-sensitive patients.",
+          "whyPrescribed": "Provides multiple strengths for flexible dosing in adults and children requiring erythromycin.",
+          "patientGuidance": "Administer on an empty stomach unless GI upset occurs; shake suspension well and store in refrigerator after reconstitution if advised."
+        },
+        {
+          "brandName": "Macas",
+          "genericName": "Erythromycin",
+          "commonStrengths": ["125 mg/5 ml Suspension"],
+          "dosageForms": ["Powder for Suspension"],
+          "company": "Asiatic Laboratories Ltd.",
+          "use": "Oral macrolide for pediatric respiratory and skin infections.",
+          "whyPrescribed": "Pleasant-tasting suspension supports adherence in children requiring erythromycin when penicillins are unsuitable.",
+          "patientGuidance": "Reconstitute with boiled and cooled water, shake before each dose, and use calibrated spoons or syringes."
+        },
+        {
+          "brandName": "Macin",
+          "genericName": "Erythromycin",
+          "commonStrengths": ["125 mg/5 ml Suspension"],
+          "dosageForms": ["Powder for Suspension"],
+          "company": "Hallmark Pharmaceuticals Ltd.",
+          "use": "Treats susceptible respiratory and soft tissue infections in children.",
+          "whyPrescribed": "Alternative erythromycin suspension ensures supply continuity across pharmacies.",
+          "patientGuidance": "Shake thoroughly prior to dosing, complete therapy as directed, and monitor for diarrhoea or rash."
+        },
+        {
+          "brandName": "Macflox",
+          "genericName": "Moxifloxacin Hydrochloride",
+          "commonStrengths": ["400 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Nuvista Pharma Ltd.",
+          "use": "Fluoroquinolone for community-acquired pneumonia, complicated skin, and intra-abdominal infections.",
+          "whyPrescribed": "Once-daily broad-spectrum coverage is useful when resistance to other quinolones is suspected.",
+          "patientGuidance": "Avoid antacids or supplements containing iron or magnesium within 6 hours and seek care if tendon pain or palpitations occur."
+        },
+        {
+          "brandName": "Maclar",
+          "genericName": "Clarithromycin",
+          "commonStrengths": ["250 mg Tablet", "500 mg Tablet", "125 mg/5 ml Suspension", "500 mg/vial Powder"],
+          "dosageForms": ["Tablet", "Powder for Suspension", "IV Injection"],
+          "company": "Techno Drugs Ltd.",
+          "use": "Macrolide antibiotic for respiratory tract infections, H. pylori eradication, and skin infections.",
+          "whyPrescribed": "Available in oral and injectable forms, supporting step-down therapy and continuity of care.",
+          "patientGuidance": "Take tablets with or without food, reconstitute suspension with measured water, and administer IV infusion under clinical supervision only."
+        },
+        {
+          "brandName": "Maclid",
+          "genericName": "Azithromycin Dihydrate",
+          "commonStrengths": ["250 mg Capsule", "500 mg Capsule", "200 mg/5 ml Suspension"],
+          "dosageForms": ["Capsule", "Powder for Suspension"],
+          "company": "Ethical Drugs Limited",
+          "use": "Once-daily macrolide for respiratory, ENT, and skin infections.",
+          "whyPrescribed": "Capsule and suspension presentations support adult and pediatric regimens within the same brand.",
+          "patientGuidance": "Maintain consistent dosing intervals, avoid skipping doses, and store reconstituted suspension as per label."
+        },
+        {
+          "brandName": "Macrobac",
+          "genericName": "Azithromycin Dihydrate",
+          "commonStrengths": ["500 mg Tablet", "200 mg/5 ml Suspension"],
+          "dosageForms": ["Tablet", "Powder for Suspension"],
+          "company": "Concord Pharmaceuticals Ltd.",
+          "use": "Treats respiratory tract, skin, and soft tissue infections caused by susceptible organisms.",
+          "whyPrescribed": "Ensures azithromycin availability with consistent local distribution networks.",
+          "patientGuidance": "Take tablets on an empty stomach, mix suspension precisely, and complete the 3- or 5-day regimen even if symptoms improve."
+        },
+        {
+          "brandName": "Macrozith",
+          "genericName": "Azithromycin Dihydrate",
+          "commonStrengths": ["250 mg Capsule"],
+          "dosageForms": ["Capsule"],
+          "company": "Silva Pharmaceuticals Ltd.",
+          "use": "Macrolide antibiotic for respiratory, genitourinary, and skin infections.",
+          "whyPrescribed": "Convenient capsule form supports adherence in adult dosing schedules.",
+          "patientGuidance": "Swallow with water at least 1 hour before meals, and monitor for diarrhoea or signs of liver dysfunction."
+        },
+        {
+          "brandName": "Macrocin-T",
+          "genericName": "Erythromycin",
+          "commonStrengths": ["2% w/v"],
+          "dosageForms": ["Lotion"],
+          "company": "Synovia Pharma PLC",
+          "use": "Topical antibiotic therapy for acne vulgaris lesions.",
+          "whyPrescribed": "Dermatology-focused formulation reduces inflammatory lesions while minimising systemic exposure.",
+          "patientGuidance": "Apply a thin layer to cleansed skin twice daily and discontinue if marked irritation or dryness occurs."
+        }
+      ]
+    },
+    {
+      "id": "reproductive-health",
+      "name": "Reproductive Health",
+      "description": "Medicines that support women's reproductive care, family planning, and hormonal management under clinical supervision.",
+      "medicines": [
+        {
+          "brandName": "A-Kit",
+          "genericName": "Mifepristone + Misoprostol",
+          "commonStrengths": ["200 mg + 200 mcg"],
+          "dosageForms": ["Tablet Kit"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Medical termination of early intrauterine pregnancy as part of a supervised regimen.",
+          "whyPrescribed": "Combines sequential anti-progestin and prostaglandin tablets in a single pack following international protocols for medical abortion up to 9 weeks gestation.",
+          "patientGuidance": "Use strictly under qualified medical guidance, confirm gestational age and exclude ectopic pregnancy, and be prepared for cramping and bleeding with emergency contact on hand."
+        }
+      ]
+    },
+    {
+      "id": "oncology-immunotherapy",
+      "name": "Oncology & Immunotherapy",
+      "description": "Targeted anticancer agents and monoclonal antibodies used under specialist supervision.",
+      "medicines": [
+        {
+          "brandName": "Mabic",
+          "genericName": "Dasatinib",
+          "commonStrengths": ["20 mg Tablet", "100 mg Tablet"],
+          "dosageForms": ["Tablet"],
+          "company": "Genvio Pharma Ltd.",
+          "use": "Tyrosine kinase inhibitor for chronic myeloid leukemia and Philadelphia chromosome-positive ALL.",
+          "whyPrescribed": "Active against multiple BCR-ABL mutations, supporting patients who are resistant or intolerant to prior therapy.",
+          "patientGuidance": "Take at the same time daily, avoid grapefruit products, monitor for fluid retention, and report bleeding or shortness of breath immediately."
+        },
+        {
+          "brandName": "Mabrix",
+          "genericName": "Rituximab",
+          "commonStrengths": ["10 mg/ml"],
+          "dosageForms": ["IV Infusion"],
+          "company": "ACI Limited",
+          "use": "CD20-directed monoclonal antibody for non-Hodgkin lymphoma and rheumatoid arthritis.",
+          "whyPrescribed": "Provides biosimilar access to rituximab, enabling immunochemotherapy protocols at lower cost.",
+          "patientGuidance": "Infuse in hospital with premedication, monitor for infusion reactions, and adhere to infection prophylaxis as advised."
+        },
+        {
+          "brandName": "Mabthera",
+          "genericName": "Rituximab",
+          "commonStrengths": ["10 mg/ml"],
+          "dosageForms": ["IV Infusion"],
+          "company": "Roche Bangladesh Ltd.",
+          "use": "Monoclonal antibody indicated for lymphoma, chronic lymphocytic leukemia, and autoimmune disorders.",
+          "whyPrescribed": "Reference rituximab brand with extensive clinical data for combination regimens and maintenance therapy.",
+          "patientGuidance": "Administer in specialist centres, monitor CBC and hepatitis status, and seek urgent help for fever or breathing difficulty post infusion."
+        }
+      ]
+    },
+    {
+      "id": "respiratory-health",
+      "name": "Respiratory Health",
+      "description": "Medicines that assist with asthma control, mucus clearance, and cough relief.",
+      "medicines": [
+        {
+          "brandName": "Montair",
+          "genericName": "Montelukast",
+          "commonStrengths": ["4 mg", "5 mg", "10 mg"],
+          "dosageForms": ["Tablet", "Chewable Tablet", "Sachet"],
+          "company": "Incepta Pharmaceuticals Ltd.",
+          "use": "Prevents asthma attacks and treats allergic rhinitis.",
+          "whyPrescribed": "Helps control allergy-triggered asthma by blocking leukotrienes.",
+          "patientGuidance": "Take in the evening for better asthma control; not for acute attacks."
+        },
+        {
+          "brandName": "Moxus",
+          "genericName": "Montelukast",
+          "commonStrengths": ["4 mg", "5 mg", "10 mg"],
+          "dosageForms": ["Tablet", "Chewable Tablet", "Sachet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Prevents asthma attacks and relieves allergic rhinitis.",
+          "whyPrescribed": "Alternative brand to maintain long-term leukotriene control.",
+          "patientGuidance": "Chewable tablets should be taken before bedtime; report mood changes to your physician."
+        },
+        {
+          "brandName": "Monas",
+          "genericName": "Montelukast",
+          "commonStrengths": ["4 mg", "5 mg", "10 mg"],
+          "dosageForms": ["Tablet", "Chewable Tablet", "Sachet"],
+          "company": "Renata PLC",
+          "use": "Prevents asthma attacks and allergic rhinitis symptoms.",
+          "whyPrescribed": "Used when patients respond well to montelukast maintenance therapy.",
+          "patientGuidance": "Continue inhaled maintenance therapy; montelukast alone doesn't replace inhalers."
+        },
+        {
+          "brandName": "Bromex",
+          "genericName": "Bromhexine",
+          "commonStrengths": ["8 mg"],
+          "dosageForms": ["Tablet", "Syrup"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Mucolytic that thins mucus and improves airway clearance.",
+          "whyPrescribed": "Helps break down thick mucus in productive coughs.",
+          "patientGuidance": "Increase water intake to support mucus thinning."
+        },
+        {
+          "brandName": "A-Cold",
+          "genericName": "Bromhexine Hydrochloride",
+          "commonStrengths": ["4 mg/5 ml"],
+          "dosageForms": ["Syrup"],
+          "company": "ACME Laboratories Ltd.",
+          "use": "Loosens and clears thick bronchial mucus in productive coughs and respiratory infections.",
+          "whyPrescribed": "Pleasantly flavoured syrup offers weight-based dosing for both pediatric and adult patients requiring mucolytic therapy.",
+          "patientGuidance": "Measure each dose accurately, take after food to minimise gastric irritation, and maintain adequate hydration for best effect."
+        },
+        {
+          "brandName": "Tusca",
+          "genericName": "Dextromethorphan + Pseudoephedrine + Triprolidine",
+          "commonStrengths": ["Syrup formulation"],
+          "dosageForms": ["Syrup"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Combination syrup for cough and cold relief.",
+          "whyPrescribed": "Addresses cough reflex, nasal congestion, and allergy-related symptoms simultaneously.",
+          "patientGuidance": "May cause drowsiness; avoid other sedating medications and alcohol."
+        }
+      ]
+    },
+    {
+      "id": "cardiovascular",
+      "name": "Cardiovascular Health",
+      "description": "Medications to manage hypertension, cholesterol, and cardiac workload.",
+      "medicines": [
+        {
+          "brandName": "Amlopres",
+          "genericName": "Amlodipine",
+          "commonStrengths": ["5 mg", "10 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Treats high blood pressure and angina.",
+          "whyPrescribed": "Calcium channel blocker that relaxes blood vessels for long-lasting BP control.",
+          "patientGuidance": "Take at the same time daily; monitor ankle swelling or dizziness."
+        },
+        {
+          "brandName": "Olmes",
+          "genericName": "Olmesartan Medoxomil",
+          "commonStrengths": ["20 mg", "40 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Treats high blood pressure.",
+          "whyPrescribed": "ARB that protects the cardiovascular system and kidneys in hypertension.",
+          "patientGuidance": "Check blood pressure regularly; avoid potassium-rich salt substitutes without advice."
+        },
+        {
+          "brandName": "Duopres",
+          "genericName": "Olmesartan Medoxomil + Amlodipine",
+          "commonStrengths": ["20 mg + 5 mg", "40 mg + 10 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Incepta Pharmaceuticals Ltd.",
+          "use": "Combination therapy for high blood pressure.",
+          "whyPrescribed": "Simplifies dosing when two agents are needed for BP control.",
+          "patientGuidance": "Take once daily; monitor for leg swelling or persistent cough."
+        },
+        {
+          "brandName": "Losar",
+          "genericName": "Losartan Potassium",
+          "commonStrengths": ["25 mg", "50 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Treats high blood pressure and protects kidneys in diabetes.",
+          "whyPrescribed": "ARB with renal protective effects in hypertensive diabetics.",
+          "patientGuidance": "Monitor kidney function and potassium levels per schedule."
+        },
+        {
+          "brandName": "Tiginor",
+          "genericName": "Atorvastatin",
+          "commonStrengths": ["10 mg", "20 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Incepta Pharmaceuticals Ltd.",
+          "use": "Lowers cholesterol and cardiovascular risk.",
+          "whyPrescribed": "Statin therapy to reduce LDL cholesterol and plaque buildup.",
+          "patientGuidance": "Take at night; report muscle pain or dark urine immediately."
+        },
+        {
+          "brandName": "Avas",
+          "genericName": "Atorvastatin",
+          "commonStrengths": ["10 mg", "20 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Lowers cholesterol and cardiovascular risk.",
+          "whyPrescribed": "Alternative atorvastatin brand for therapy continuation.",
+          "patientGuidance": "Follow a heart-healthy diet alongside medication."
+        },
+        {
+          "brandName": "Rocovas",
+          "genericName": "Rosuvastatin",
+          "commonStrengths": ["5 mg", "10 mg", "20 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Lowers cholesterol and reduces cardiovascular risk.",
+          "whyPrescribed": "Strong LDL-lowering statin for high-risk patients.",
+          "patientGuidance": "May be taken at any time; maintain routine lipid profile checks."
+        },
+        {
+          "brandName": "Rosu",
+          "genericName": "Rosuvastatin",
+          "commonStrengths": ["5 mg", "10 mg", "20 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Ziska Pharmaceuticals Ltd.",
+          "use": "Lowers cholesterol and reduces cardiovascular risk.",
+          "whyPrescribed": "Alternative rosuvastatin brand when patient preference or availability changes.",
+          "patientGuidance": "Combine with diet and exercise; report unexplained muscle soreness."
+        },
+        {
+          "brandName": "Cardiloc",
+          "genericName": "Metoprolol Succinate",
+          "commonStrengths": ["25 mg", "50 mg"],
+          "dosageForms": ["Extended Release Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Beta-blocker for high blood pressure, angina, and heart failure.",
+          "whyPrescribed": "Reduces heart workload and helps rhythm control in cardiac conditions.",
+          "patientGuidance": "Do not stop suddenly; monitor heart rate and report dizziness or fatigue."
+        },
+        {
+          "brandName": "Macipah",
+          "genericName": "Macitentan",
+          "commonStrengths": ["10 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "UniMed UniHealth Pharmaceuticals Ltd.",
+          "use": "Endothelin receptor antagonist for long-term management of pulmonary arterial hypertension.",
+          "whyPrescribed": "Oral once-daily therapy slows disease progression and reduces hospitalization when added to PAH treatment regimens.",
+          "patientGuidance": "Take at the same time daily, perform periodic liver function and hemoglobin monitoring, and avoid use in pregnancy—reliable contraception required."
+        }
+      ]
+    },
+    {
+      "id": "diabetes-management",
+      "name": "Diabetes Management",
+      "description": "Therapies that improve insulin sensitivity or provide insulin replacement to control blood glucose.",
+      "medicines": [
+        {
+          "brandName": "Glory",
+          "genericName": "Gliclazide",
+          "commonStrengths": ["80 mg MR", "30 mg MR"],
+          "dosageForms": ["Modified Release Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Oral medication for Type 2 Diabetes.",
+          "whyPrescribed": "Stimulates pancreatic insulin release for better post-meal control.",
+          "patientGuidance": "Take with breakfast; carry a sugar source to treat potential hypoglycaemia."
+        },
+        {
+          "brandName": "Diabinil",
+          "genericName": "Metformin Hydrochloride",
+          "commonStrengths": ["500 mg", "850 mg ER"],
+          "dosageForms": ["Tablet", "Extended Release Tablet"],
+          "company": "Incepta Pharmaceuticals Ltd.",
+          "use": "Oral medication for Type 2 Diabetes.",
+          "whyPrescribed": "First-line therapy that lowers glucose production and improves insulin sensitivity.",
+          "patientGuidance": "Take with meals to reduce stomach upset; monitor kidney function annually."
+        },
+        {
+          "brandName": "Glucomin",
+          "genericName": "Metformin Hydrochloride",
+          "commonStrengths": ["500 mg", "850 mg"],
+          "dosageForms": ["Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Oral medication for Type 2 Diabetes.",
+          "whyPrescribed": "Affordable metformin brand for continued glycaemic control.",
+          "patientGuidance": "Take with meals; report persistent diarrhoea or fatigue."
+        },
+        {
+          "brandName": "Insulin (Various Brands)",
+          "genericName": "Human Insulin (Isophane, Regular, Mixed)",
+          "commonStrengths": ["100 IU/ml"],
+          "dosageForms": ["Vial", "Penfill"],
+          "company": "Multiple manufacturers",
+          "use": "Controls blood sugar in Type 1 and Type 2 Diabetes.",
+          "whyPrescribed": "Essential when pancreatic insulin is insufficient; dosing tailored to glucose patterns.",
+          "patientGuidance": "Store in refrigerator; rotate injection sites and monitor for hypoglycaemia."
+        }
+      ]
+    },
+    {
+      "id": "vitamins-supplements",
+      "name": "Vitamins & Nutritional Supplements",
+      "description": "Supplements to address nutritional deficiencies and support general health.",
+      "medicines": [
+        {
+          "brandName": "Ostecal D",
+          "genericName": "Calcium Carbonate + Colecalciferol",
+          "commonStrengths": ["500 mg Calcium + 200 IU Vitamin D3"],
+          "dosageForms": ["Tablet"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Bone health and supplementation of calcium and vitamin D.",
+          "whyPrescribed": "Supports bone density, especially in osteoporosis prevention.",
+          "patientGuidance": "Take with meals; ensure adequate hydration to prevent kidney stones."
+        },
+        {
+          "brandName": "Calcibex",
+          "genericName": "Calcium Carbonate + Colecalciferol",
+          "commonStrengths": ["500 mg Calcium + 200 IU Vitamin D3"],
+          "dosageForms": ["Tablet"],
+          "company": "Beximco Pharmaceuticals Ltd.",
+          "use": "Calcium and vitamin D supplementation.",
+          "whyPrescribed": "Alternative brand ensuring consistent supply for chronic supplementation.",
+          "patientGuidance": "Separate from iron supplements by at least 2 hours for better absorption."
+        },
+        {
+          "brandName": "Neuro-B",
+          "genericName": "Thiamine + Pyridoxine + Cyanocobalamin",
+          "commonStrengths": ["100 mg B1", "200 mg B6", "200 mcg B12"],
+          "dosageForms": ["Tablet", "Injection"],
+          "company": "Square Pharmaceuticals PLC",
+          "use": "Treats B vitamin deficiencies and supports nerve health.",
+          "whyPrescribed": "Useful in neuropathy and recovery after nerve injury or chronic alcohol use.",
+          "patientGuidance": "Maintain consistent daily dosing; injections may require clinic visits."
+        },
+        {
+          "brandName": "Ceevit",
+          "genericName": "Ascorbic Acid",
+          "commonStrengths": ["250 mg", "500 mg"],
+          "dosageForms": ["Chewable Tablet"],
+          "company": "Renata PLC",
+          "use": "Vitamin C supplementation and antioxidant support.",
+          "whyPrescribed": "Supports immunity and collagen synthesis during recovery.",
+          "patientGuidance": "Chew thoroughly; excessive dosing may cause stomach upset."
+        },
+        {
+          "brandName": "A-Forte",
+          "genericName": "Vitamin A",
+          "commonStrengths": ["50,000 IU Soft Capsule"],
+          "dosageForms": ["Capsule"],
+          "company": "Globe Pharmaceuticals Ltd.",
+          "use": "Prevents and treats vitamin A deficiency and supports vision and immune function.",
+          "whyPrescribed": "High-potency supplement replenishes hepatic vitamin A stores in patients at risk of deficiency.",
+          "patientGuidance": "Take with meals containing fat for better absorption and avoid exceeding recommended frequency to prevent hypervitaminosis A."
+        },
+        {
+          "brandName": "Maacal-DX",
+          "genericName": "Eggshell Calcium + Vitamin D3",
+          "commonStrengths": ["600 mg + 400 IU"],
+          "dosageForms": ["Tablet"],
+          "company": "Popular Pharmaceuticals Ltd.",
+          "use": "Supports bone remineralisation and replenishes dietary calcium and vitamin D in deficiency states.",
+          "whyPrescribed": "Eggshell-derived calcium provides a bioavailable mineral source while vitamin D3 enhances intestinal absorption and skeletal uptake.",
+          "patientGuidance": "Take after meals with water, separate from iron supplements by 2 hours, and maintain weight-bearing exercise where possible."
+        },
+        {
+          "brandName": "Maclon",
+          "genericName": "Mecobalamin",
+          "commonStrengths": ["500 mcg"],
+          "dosageForms": ["Tablet"],
+          "company": "The White Horse Pharmaceuticals Ltd.",
+          "use": "Treats vitamin B12 deficiency-related neuropathy, anemia, and fatigue.",
+          "whyPrescribed": "Neurologically active methylcobalamin form supports myelin repair and improves peripheral neuropathic symptoms more rapidly than cyanocobalamin.",
+          "patientGuidance": "Allow tablet to dissolve under the tongue or swallow with water after meals and monitor blood counts during prolonged therapy."
+        }
+      ]
+    }
+  ]
+}
+
