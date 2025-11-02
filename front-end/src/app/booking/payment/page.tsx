@@ -351,7 +351,8 @@ export default function PaymentPage() {
           errorMessage.toLowerCase().includes('eligibility')) {
         // Handle rapid assistance specific errors
         if (errorMessage.toLowerCase().includes('age')) {
-          handleRapidAssistanceError('age_ineligible', bookingData?.patientAge ?? undefined);
+          const age: number | undefined = bookingData?.patientAge != null ? bookingData.patientAge : undefined;
+          handleRapidAssistanceError('age_ineligible', age);
         } else if (errorMessage.toLowerCase().includes('manipulation') || 
                    errorMessage.toLowerCase().includes('invalid')) {
           handleRapidAssistanceError('manipulation_detected');
