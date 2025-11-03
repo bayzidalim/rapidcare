@@ -2,23 +2,35 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { isAuthenticated } from '@/lib/auth';
+import { isAuthenticated, getCurrentUser } from '@/lib/auth';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  allowedUserTypes?: string[];
 }
 
-const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
+const ProtectedRoute = ({ children, allowedUserTypes }: ProtectedRouteProps) => {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (!isAuthenticated()) {
       router.push('/login');
-    } else {
-      setIsLoading(false);
+      return;
     }
-  }, [router]);
+    
+    // Check user type if allowedUserTypes is specified
+    if (allowedUserTypes && allowedUserTypes.length > 0) {
+      const user = getCurrentUser();
+      const userType = user?.userType;
+      if (!userType || !allowedUserTypes.includes(userType)) {
+        router.push('/dashboard?message=Access denied. You do not have permission to view this page.');
+        return;
+      }
+    }
+    
+    setIsLoading(false);
+  }, [router, allowedUserTypes]);
 
   if (isLoading) {
     return (

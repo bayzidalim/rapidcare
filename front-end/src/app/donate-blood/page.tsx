@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +17,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { bloodAPI } from '@/lib/api';
 import { BloodRequest, BloodRequestFormData } from '@/lib/types';
+import { getCurrentUser } from '@/lib/auth';
 import { 
   Droplets, 
   Heart, 
@@ -50,6 +52,7 @@ const bloodRequestSchema = z.object({
 });
 
 export default function BloodDonationPage() {
+  const router = useRouter();
   const [bloodRequests, setBloodRequests] = useState<BloodRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -107,7 +110,7 @@ export default function BloodDonationPage() {
       setLoading(true);
       setError('');
 
-      const response = await bloodAPI.createRequest(data);
+      const response = await bloodAPI.createRequest(data as unknown as Record<string, unknown>);
       
       if (response.data.success) {
         setSuccess(true);

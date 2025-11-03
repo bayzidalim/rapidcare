@@ -155,7 +155,7 @@ export default function HospitalsPage() {
   };
 
   const getPricingDisplay = (pricing: { baseRate?: number; hourlyRate?: number; currency?: string } | undefined) => {
-    if (!pricing || pricing.baseRate === 0) return 'Pricing not available';
+    if (!pricing || !pricing.baseRate || pricing.baseRate === 0) return 'Pricing not available';
     
     const basePrice = formatPrice(pricing.baseRate, pricing.currency);
     if (pricing.hourlyRate && pricing.hourlyRate > 0) {

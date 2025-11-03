@@ -223,7 +223,7 @@ const BookingCardWithPayment: React.FC<BookingCardWithPaymentProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-gray-500" />
-              <span>{booking.emergencyContact?.name || booking.emergencyContactName || 'N/A'}</span>
+              <span>{booking.emergencyContact?.name || 'N/A'}</span>
             </div>
           </div>
 
@@ -597,15 +597,15 @@ const BookingCardWithPayment: React.FC<BookingCardWithPaymentProps> = ({
               <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Name:</span>
-                  <span className="font-medium">{booking.emergencyContact?.name || booking.emergencyContactName}</span>
+                  <span className="font-medium">{booking.emergencyContact?.name || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Phone:</span>
-                  <span className="font-medium">{booking.emergencyContact?.phone || booking.emergencyContactPhone}</span>
+                  <span className="font-medium">{booking.emergencyContact?.phone || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Relationship:</span>
-                  <span className="font-medium capitalize">{booking.emergencyContact?.relationship || booking.emergencyContactRelationship}</span>
+                  <span className="font-medium capitalize">{booking.emergencyContact?.relationship || 'N/A'}</span>
                 </div>
               </div>
             </div>

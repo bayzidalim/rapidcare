@@ -144,7 +144,8 @@ export default function DashboardPage() {
           console.log('No blood requests found for user');
           setBloodRequests([]);
         } else {
-          console.error('Error fetching blood requests:', error?.message || 'Unknown error');
+          const message = (error as Error)?.message ?? String(error);
+          console.error('Error fetching blood requests:', message || 'Unknown error');
           setBloodRequests([]);
         }
       }
@@ -173,7 +174,8 @@ export default function DashboardPage() {
           console.log('No payment history found for user');
           setTransactions([]);
         } else {
-          console.error('Error fetching payment history:', error?.message || 'Unknown error');
+          const message = (error as Error)?.message ?? String(error);
+          console.error('Error fetching payment history:', message || 'Unknown error');
           setTransactions([]);
         }
       }
@@ -217,7 +219,8 @@ export default function DashboardPage() {
         router.push('/login');
         return;
       }
-      console.error('Error fetching user data:', error?.message || 'Unknown error');
+      const message = (error as Error)?.message ?? String(error);
+      console.error('Error fetching user data:', message || 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -248,8 +251,10 @@ export default function DashboardPage() {
         console.log('No hospital data found for user');
         setHospital(null);
       } else {
-        console.error('Error fetching hospital data:', error?.message || 'Unknown error');
-        setHospitalError(error.response?.data?.error || 'Failed to load hospital data');
+        const message = (error as Error)?.message ?? String(error);
+        console.error('Error fetching hospital data:', message || 'Unknown error');
+        const errorWithResponse = error as { response?: { data?: { error?: string } } };
+        setHospitalError(errorWithResponse.response?.data?.error || 'Failed to load hospital data');
       }
     } finally {
       setHospitalLoading(false);
@@ -280,7 +285,8 @@ export default function DashboardPage() {
         console.log('No payment history found for user');
         setTransactions([]);
       } else {
-        console.error('Error fetching payment history:', error?.message || 'Unknown error');
+        const message = (error as Error)?.message ?? String(error);
+        console.error('Error fetching payment history:', message || 'Unknown error');
         setTransactions([]);
       }
     } finally {

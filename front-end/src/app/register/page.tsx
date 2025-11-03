@@ -322,14 +322,24 @@ export default function RegisterPage() {
       };
 
       // Include hospital data for hospital authorities (without capacity)
-      if (formData.userType === 'hospital-authority') {
+      if (formData.userType === 'hospital-authority' && formData.hospital) {
         registrationData.hospital = {
-          name: formData.hospital?.name,
-          description: formData.hospital?.description,
-          type: formData.hospital?.type,
-          address: formData.hospital?.address,
-          contact: formData.hospital?.contact,
-          services: formData.hospital?.services || []
+          name: formData.hospital.name || '',
+          description: formData.hospital.description || '',
+          type: formData.hospital.type || '',
+          address: formData.hospital.address || {
+            street: '',
+            city: '',
+            state: '',
+            zipCode: '',
+            country: ''
+          },
+          contact: formData.hospital.contact || {
+            phone: '',
+            email: '',
+            emergency: ''
+          },
+          services: formData.hospital.services || []
         };
       }
 

@@ -227,7 +227,7 @@ export default function RapidCollectionPage() {
     setError(null);
 
     try {
-      const response = await sampleCollectionAPI.submitRequest(formData);
+      const response = await sampleCollectionAPI.submitRequest(formData as unknown as Record<string, unknown>);
       
       // Authenticated user - redirect to dashboard
       setSuccess(`Collection request created successfully! ${response.data.message}`);

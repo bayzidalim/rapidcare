@@ -69,13 +69,14 @@ export default function ManageHospitalsPage() {
   );
 
   const getResourceAvailability = (hospital: Hospital, resource: string) => {
+    if (!hospital.resources) return 0;
     switch (resource) {
       case 'beds':
-        return hospital.resources.beds.available;
+        return hospital.resources.beds?.available || 0;
       case 'icu':
-        return hospital.resources.icu.available;
+        return hospital.resources.icu?.available || 0;
       case 'operationTheatres':
-        return hospital.resources.operationTheatres.available;
+        return hospital.resources.operationTheatres?.available || 0;
       default:
         return 0;
     }
@@ -153,7 +154,7 @@ export default function ManageHospitalsPage() {
                   <div>
                     <p className="text-sm font-medium text-gray-600">Total Beds</p>
                     <p className="text-2xl font-bold">
-                      {hospitals.reduce((sum, h) => sum + h.resources.beds.total, 0)}
+                      {hospitals.reduce((sum, h) => sum + (h.resources?.beds?.total || 0), 0)}
                     </p>
                   </div>
                   <Bed className="w-8 h-8 text-purple-600" />
@@ -167,7 +168,7 @@ export default function ManageHospitalsPage() {
                   <div>
                     <p className="text-sm font-medium text-gray-600">Available Beds</p>
                     <p className="text-2xl font-bold">
-                      {hospitals.reduce((sum, h) => sum + h.resources.beds.available, 0)}
+                      {hospitals.reduce((sum, h) => sum + (h.resources?.beds?.available || 0), 0)}
                     </p>
                   </div>
                   <Heart className="w-8 h-8 text-red-600" />
@@ -229,8 +230,8 @@ export default function ManageHospitalsPage() {
                           <Bed className="w-4 h-4" />
                           <span className="text-sm font-medium">Beds</span>
                         </div>
-                        <Badge className={getResourceColor(hospital.resources.beds.available)}>
-                          {hospital.resources.beds.available}/{hospital.resources.beds.total}
+                        <Badge className={getResourceColor(hospital.resources?.beds?.available || 0)}>
+                          {hospital.resources?.beds?.available || 0}/{hospital.resources?.beds?.total || 0}
                         </Badge>
                       </div>
                       <div className="text-center">
@@ -238,8 +239,8 @@ export default function ManageHospitalsPage() {
                           <Heart className="w-4 h-4" />
                           <span className="text-sm font-medium">ICU</span>
                         </div>
-                        <Badge className={getResourceColor(hospital.resources.icu.available)}>
-                          {hospital.resources.icu.available}/{hospital.resources.icu.total}
+                        <Badge className={getResourceColor(hospital.resources?.icu?.available || 0)}>
+                          {hospital.resources?.icu?.available || 0}/{hospital.resources?.icu?.total || 0}
                         </Badge>
                       </div>
                       <div className="text-center">
@@ -247,8 +248,8 @@ export default function ManageHospitalsPage() {
                           <Scissors className="w-4 h-4" />
                           <span className="text-sm font-medium">OT</span>
                         </div>
-                        <Badge className={getResourceColor(hospital.resources.operationTheatres.available)}>
-                          {hospital.resources.operationTheatres.available}/{hospital.resources.operationTheatres.total}
+                        <Badge className={getResourceColor(hospital.resources?.operationTheatres?.available || 0)}>
+                          {hospital.resources?.operationTheatres?.available || 0}/{hospital.resources?.operationTheatres?.total || 0}
                         </Badge>
                       </div>
                     </div>
@@ -322,19 +323,19 @@ export default function ManageHospitalsPage() {
                                 <div>
                                   <p className="font-medium">Beds</p>
                                   <p className="text-gray-600">
-                                    {hospital.resources.beds.available} available / {hospital.resources.beds.total} total
+                                    {hospital.resources?.beds?.available || 0} available / {hospital.resources?.beds?.total || 0} total
                                   </p>
                                 </div>
                                 <div>
                                   <p className="font-medium">ICU</p>
                                   <p className="text-gray-600">
-                                    {hospital.resources.icu.available} available / {hospital.resources.icu.total} total
+                                    {hospital.resources?.icu?.available || 0} available / {hospital.resources?.icu?.total || 0} total
                                   </p>
                                 </div>
                                 <div>
                                   <p className="font-medium">Operation Theatres</p>
                                   <p className="text-gray-600">
-                                    {hospital.resources.operationTheatres.available} available / {hospital.resources.operationTheatres.total} total
+                                    {hospital.resources?.operationTheatres?.available || 0} available / {hospital.resources?.operationTheatres?.total || 0} total
                                   </p>
                                 </div>
                               </div>
@@ -351,7 +352,7 @@ export default function ManageHospitalsPage() {
                             </div>
                             <div>
                               <h4 className="font-medium mb-2">Surgeons</h4>
-                              {hospital.surgeons.length > 0 ? (
+                              {hospital.surgeons && hospital.surgeons.length > 0 ? (
                                 <div className="space-y-2">
                                   {hospital.surgeons.map((surgeon, index) => (
                                     <div key={index} className="text-sm">
