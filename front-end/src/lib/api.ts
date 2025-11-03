@@ -54,7 +54,7 @@ const retryOperation = async <T>(
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    console.log(`Making request to: ${config.baseURL}${config.url}`);
+    console.log(`📤 Making request to: ${config.baseURL}${config.url}`);
     // Add auth token if available
     const token = localStorage.getItem('token');
     if (token) {
@@ -71,6 +71,17 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Enhanced error logging for debugging
+    console.error('🔴 API Error Details:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      url: error.config?.url,
+      baseURL: error.config?.baseURL,
+      fullURL: error.config?.baseURL + error.config?.url
+    });
     console.log('API Error:', error);
     if (error.response?.status === 401) {
       // Only redirect to login if it's not a login request itself
