@@ -1081,8 +1081,8 @@ export default function PaymentPage() {
                 {/* Payment Button */}
                 {(() => {
                   const totalAmount = (bookingData?.paymentAmount || 0) + (rapidAssistance ? 200 : 0);
-                  const isInsufficientBalance = bookingData && userBalance < totalAmount;
-                  const isDisabled = loading || !transactionId.trim() || !bookingData || isInsufficientBalance;
+                  const isInsufficientBalance: boolean = !!bookingData && userBalance < totalAmount;
+                  const isDisabled: boolean = !!(loading || !transactionId.trim() || !bookingData || isInsufficientBalance);
 
                   return (
                     <Button
