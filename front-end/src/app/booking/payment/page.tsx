@@ -32,6 +32,9 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+// Force dynamic rendering to handle search params
+export const dynamic = 'force-dynamic';
+
 interface BookingData {
   id: number;
   patientName: string;
