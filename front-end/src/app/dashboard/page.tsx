@@ -95,15 +95,16 @@ export default function DashboardPage() {
           setBookings([]);
         }
       } catch (error: unknown) {
+        const err = error as { response?: { status?: number } };
         // Handle 401/403 errors specifically (authentication issues)
-        if (error.response?.status === 401 || error.response?.status === 403) {
+        if (err.response?.status === 401 || err.response?.status === 403) {
           // Token might be expired, redirect to login
           console.log('Authentication error, redirecting to login');
           router.push('/login');
           return;
         }
         // For 404 errors, this might just mean no bookings exist, not an auth issue
-        if (error.response?.status === 404) {
+        if (err.response?.status === 404) {
           console.log('No bookings found for user');
           setBookings([]);
         } else {
@@ -122,21 +123,23 @@ export default function DashboardPage() {
           setBloodRequests([]);
         }
       } catch (error: unknown) {
-        console.error('Error fetching blood requests:', error?.message || error);
+        const err = error as { response?: { status?: number; statusText?: string; data?: unknown } };
+        const message = (error as Error)?.message ?? String(error);
+        console.error('Error fetching blood requests:', message);
         console.log('Blood requests error details:', {
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          data: error.response?.data
+          status: err.response?.status,
+          statusText: err.response?.statusText,
+          data: err.response?.data
         });
         // Handle 401/403 errors specifically (authentication issues)
-        if (error.response?.status === 401 || error.response?.status === 403) {
+        if (err.response?.status === 401 || err.response?.status === 403) {
           // Token might be expired, redirect to login
           console.log('Authentication error, redirecting to login');
           router.push('/login');
           return;
         }
         // For 404 errors, this might just mean no blood requests exist, not an auth issue
-        if (error.response?.status === 404) {
+        if (err.response?.status === 404) {
           console.log('No blood requests found for user');
           setBloodRequests([]);
         } else {
@@ -149,21 +152,23 @@ export default function DashboardPage() {
         console.log('Fetching payment history...');
         await fetchPaymentHistory();
       } catch (error: unknown) {
-        console.error('Error fetching payment history:', error?.message || error);
+        const err = error as { response?: { status?: number; statusText?: string; data?: unknown } };
+        const message = (error as Error)?.message ?? String(error);
+        console.error('Error fetching payment history:', message);
         console.log('Payment history error details:', {
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          data: error.response?.data
+          status: err.response?.status,
+          statusText: err.response?.statusText,
+          data: err.response?.data
         });
         // Handle 401/403 errors specifically (authentication issues)
-        if (error.response?.status === 401 || error.response?.status === 403) {
+        if (err.response?.status === 401 || err.response?.status === 403) {
           // Token might be expired, redirect to login
           console.log('Authentication error, redirecting to login');
           router.push('/login');
           return;
         }
         // For 404 errors, this might just mean no payment history exists, not an auth issue
-        if (error.response?.status === 404) {
+        if (err.response?.status === 404) {
           console.log('No payment history found for user');
           setTransactions([]);
         } else {
@@ -178,21 +183,23 @@ export default function DashboardPage() {
           console.log('Fetching hospital data for authority user...');
           await fetchHospitalData();
         } catch (error: unknown) {
-          console.error('Error fetching hospital data:', error?.message || error);
+          const err = error as { response?: { status?: number; statusText?: string; data?: unknown } };
+          const message = (error as Error)?.message ?? String(error);
+          console.error('Error fetching hospital data:', message);
           console.log('Hospital data error details:', {
-            status: error.response?.status,
-            statusText: error.response?.statusText,
-            data: error.response?.data
+            status: err.response?.status,
+            statusText: err.response?.statusText,
+            data: err.response?.data
           });
           // Handle 401/403 errors specifically (authentication issues)
-          if (error.response?.status === 401 || error.response?.status === 403) {
+          if (err.response?.status === 401 || err.response?.status === 403) {
             // Token might be expired, redirect to login
             console.log('Authentication error, redirecting to login');
             router.push('/login');
             return;
           }
           // For 404 errors, this might mean no hospital data exists for this user
-          if (error.response?.status === 404) {
+          if (err.response?.status === 404) {
             console.log('No hospital data found for authority user');
             setHospital(null);
           } else {
@@ -201,8 +208,9 @@ export default function DashboardPage() {
         }
       }
     } catch (error: unknown) {
+      const err = error as { response?: { status?: number } };
       // Handle 401/403 errors specifically (authentication issues)
-      if (error.response?.status === 401 || error.response?.status === 403) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
         // Token might be expired, redirect to login
         console.log('Authentication error, redirecting to login');
         router.push('/login');
@@ -226,15 +234,16 @@ export default function DashboardPage() {
         setHospital(response.data.data);
       }
     } catch (error: unknown) {
+      const err = error as { response?: { status?: number } };
       // Handle 401/403 errors specifically (authentication issues)
-      if (error.response?.status === 401 || error.response?.status === 403) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
         // Token might be expired, redirect to login
         console.log('Authentication error, redirecting to login');
         router.push('/login');
         return;
       }
       // For 404 errors, this might mean no hospital data exists for this user
-      if (error.response?.status === 404) {
+      if (err.response?.status === 404) {
         console.log('No hospital data found for user');
         setHospital(null);
       } else {
@@ -257,15 +266,16 @@ export default function DashboardPage() {
         setTransactions(response.data.data);
       }
     } catch (error: unknown) {
+      const err = error as { response?: { status?: number } };
       // Handle 401/403 errors specifically (authentication issues)
-      if (error.response?.status === 401 || error.response?.status === 403) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
         // Token might be expired, redirect to login
         console.log('Authentication error, redirecting to login');
         router.push('/login');
         return;
       }
       // For 404 errors, this might just mean no payment history exists, not an auth issue
-      if (error.response?.status === 404) {
+      if (err.response?.status === 404) {
         console.log('No payment history found for user');
         setTransactions([]);
       } else {
