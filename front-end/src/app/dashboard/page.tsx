@@ -96,6 +96,7 @@ export default function DashboardPage() {
         }
       } catch (error: unknown) {
         const err = error as { response?: { status?: number } };
+        const message = (error as Error)?.message ?? String(error);
         // Handle 401/403 errors specifically (authentication issues)
         if (err.response?.status === 401 || err.response?.status === 403) {
           // Token might be expired, redirect to login
@@ -108,7 +109,7 @@ export default function DashboardPage() {
           console.log('No bookings found for user');
           setBookings([]);
         } else {
-          console.error('Error fetching bookings:', error?.message || 'Unknown error');
+          console.error('Error fetching bookings:', message || 'Unknown error');
           setBookings([]);
         }
       }
