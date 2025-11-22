@@ -359,14 +359,24 @@ router.post('/validate', authenticate, async (req, res) => {
       });
     }
 
-    const validation = PricingManagementService.validatePricingData(pricingData);
-    const constraints = PricingManagementService.validatePricingConstraints(pricingData);
+    // Basic validation only - no business rules enforcement
+    const errors = [];
+    if (pricingData.baseRate !== undefined && pricingData.baseRate < 0) {
+      errors.push('Base rate cannot be negative');
+    }
 
     res.status(200).json({
       success: true,
       data: {
-        validation,
-        constraints
+        validation: {
+          isValid: errors.length === 0,
+          errors
+        },
+        constraints: {
+          isValid: true,
+          errors: [],
+          warnings: []
+        }
       }
     });
 

@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { HydrationSafeButton } from '@/components/HydrationSafeButton';
 import { CounterNumber } from '@/components/CounterNumber';
+import AnimatedPage, { FadeIn, ScrollReveal, AnimatedList, AnimatedListItem } from '@/components/AnimatedPage';
 import Link from 'next/link';
 import { 
   Building2, 
@@ -29,6 +30,7 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="relative py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
+          <AnimatedPage>
           <div className="text-center">
             <Badge variant="secondary" className="mb-4">
               Emergency Care, Delivered Fast
@@ -85,12 +87,14 @@ export default function HomePage() {
               />
             </div>
           </div>
+          </AnimatedPage>
         </div>
       </section>
 
       {/* Features Section */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 bg-white">
         <div className="max-w-7xl mx-auto">
+          <ScrollReveal>
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
               Why Choose RapidCare?
@@ -99,9 +103,11 @@ export default function HomePage() {
               When every second counts, we connect you with hospitals and medical facilities in real-time.
             </p>
           </div>
+          </ScrollReveal>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <Card className="border-0 shadow-lg">
+          <AnimatedList className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <AnimatedListItem>
+            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
                   <Clock className="w-6 h-6 text-blue-600" />
@@ -112,8 +118,10 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
             </Card>
+            </AnimatedListItem>
 
-            <Card className="border-0 shadow-lg">
+            <AnimatedListItem>
+            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
                   <Shield className="w-6 h-6 text-green-600" />
@@ -124,8 +132,10 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
             </Card>
+            </AnimatedListItem>
 
-            <Card className="border-0 shadow-lg">
+            <AnimatedListItem>
+            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
                   <Users className="w-6 h-6 text-purple-600" />
@@ -136,8 +146,10 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
             </Card>
+            </AnimatedListItem>
 
-            <Card className="border-0 shadow-lg">
+            <AnimatedListItem>
+            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
                 <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mb-4">
                   <Heart className="w-6 h-6 text-red-600" />
@@ -148,8 +160,10 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
             </Card>
+            </AnimatedListItem>
 
-            <Card className="border-0 shadow-lg">
+            <AnimatedListItem>
+            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
                   <MapPin className="w-6 h-6 text-orange-600" />
@@ -160,8 +174,10 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
             </Card>
+            </AnimatedListItem>
 
-            <Card className="border-0 shadow-lg">
+            <AnimatedListItem>
+            <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
                 <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center mb-4">
                   <Phone className="w-6 h-6 text-teal-600" />
@@ -172,13 +188,15 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
             </Card>
-          </div>
+            </AnimatedListItem>
+          </AnimatedList>
         </div>
       </section>
 
       {/* Stats Section */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 bg-blue-50">
         <div className="max-w-7xl mx-auto">
+          <ScrollReveal>
           <div className="grid md:grid-cols-4 gap-8 text-center">
             <div>
               <CounterNumber
@@ -218,11 +236,13 @@ export default function HomePage() {
               <div className="text-gray-600">Success Rate</div>
             </div>
           </div>
+          </ScrollReveal>
         </div>
       </section>
 
       {/* CTA Section */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 bg-white">
+        <ScrollReveal>
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">
             Ready to Access Emergency Care?
@@ -274,6 +294,7 @@ export default function HomePage() {
             />
           </div>
         </div>
+        </ScrollReveal>
       </section>
 
       {/* Footer */}

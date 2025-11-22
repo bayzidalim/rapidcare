@@ -11,7 +11,7 @@ Emergency Care, Delivered Fast. A comprehensive emergency medical resource booki
 
 - **Frontend**: Deploy to Vercel for live demo
 - **Backend API**: Deploy to Railway/Render for API access
-- **Documentation**: Complete API documentation available in [docs/API.md](docs/API.md)
+- **Documentation**: Complete API documentation available in [docs/API_UPDATED.md](docs/API_UPDATED.md)
 
 ## 🚀 Features
 
@@ -154,6 +154,12 @@ npm run dev
    npm run seed
    ```
 
+6. Assign credentials to all hospitals:
+   ```bash
+   npm run assign:credentials
+   ```
+   This creates login accounts for all hospital authorities. Credentials are saved to `hospital_credentials.json` and `HOSPITAL_CREDENTIALS.md`.
+
 #### Frontend Setup
 
 1. Navigate to the frontend directory:
@@ -238,6 +244,45 @@ The frontend uses shadcn/ui components for a consistent design:
 - **Modals**: Confirmation dialogs and detailed views
 - **Badges**: Status indicators and resource availability
 
+## 🏥 Hospital Credentials Management
+
+Every hospital in the system has dedicated login credentials for hospital authorities to manage their facilities.
+
+### Assign Credentials to All Hospitals
+```bash
+cd back-end
+npm run assign:credentials
+```
+
+This command:
+- Creates hospital-authority accounts for all approved hospitals
+- Generates secure random passwords
+- Saves credentials to `hospital_credentials.json` and `HOSPITAL_CREDENTIALS.md`
+- Updates existing accounts if they already exist
+
+### View Existing Credentials
+```bash
+cd back-end
+npm run view:credentials
+```
+
+### Credential Files
+- **JSON Format**: `back-end/hospital_credentials.json`
+- **Readable Format**: `HOSPITAL_CREDENTIALS.md` (root directory)
+- **Guide**: `HOSPITAL_CREDENTIALS_GUIDE.md` (complete documentation)
+
+**Note**: Credential files are automatically added to `.gitignore` for security.
+
+### Hospital Authority Access
+Hospital authorities can:
+- Manage hospital resources (beds, ICU, operation theatres)
+- Update hospital information
+- View bookings and payments
+- Manage pricing
+- View analytics
+
+For detailed information, see [HOSPITAL_CREDENTIALS_GUIDE.md](HOSPITAL_CREDENTIALS_GUIDE.md)
+
 ## 🔧 Development
 
 ### Backend Development
@@ -307,7 +352,7 @@ The application uses SQLite with the following main tables:
 
 ## 🚀 Deployment
 
-For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
+For detailed deployment instructions, see [docs/DEPLOYMENT_UPDATED.md](docs/DEPLOYMENT_UPDATED.md).
 
 ### Quick Deploy
 
@@ -366,9 +411,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For support and questions:
 - Create an issue in the repository
-- Check the [API Integration Guide](API_INTEGRATION_GUIDE.md)
-- Review the [Rapid Collection Feature Documentation](RAPID_COLLECTION_FEATURE.md)
-- See the [deployment guide](DEPLOYMENT.md)
+- Review the [API documentation](docs/API_UPDATED.md)
+- See the [deployment guide](docs/DEPLOYMENT_UPDATED.md)
 - Review [contributing guidelines](CONTRIBUTING.md)
 
 ## 🙏 Acknowledgments
@@ -378,10 +422,6 @@ For support and questions:
 - **Tailwind CSS** - Utility-first CSS framework
 - **Express.js** - Fast, unopinionated web framework
 - **SQLite** - Lightweight database solution
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 

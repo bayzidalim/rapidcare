@@ -70,10 +70,17 @@ const BookingCancellationModal: React.FC<BookingCancellationModalProps> = ({
       setError('');
 
       // Cancel the booking
-      await bookingAPI.cancel(booking.id, {
+      const response = await bookingAPI.cancel(booking.id, {
         reason: reason.trim(),
         requestRefund: requestRefund && canGetRefund
       });
+
+      // Use the updated booking from the API response
+      const updatedBooking = response.data?.data || {
+        ...booking,
+        status: 'cancelled',
+        notes: reason.trim()
+      };
 
       // If refund was requested and payment exists, process refund
       if (requestRefund && canGetRefund && booking.payment?.transactionId) {
@@ -88,23 +95,13 @@ const BookingCancellationModal: React.FC<BookingCancellationModalProps> = ({
         }
       }
 
-      // Update the booking status
-      const updatedBooking: Booking = {
-        ...booking,
-        status: 'cancelled',
-        notes: reason.trim(),
-        payment: {
-          ...(booking.payment || {}),
-          status: requestRefund && canGetRefund ? 'refunded' : (booking.payment?.status || 'pending')
-        }
-      };
-
       onCancellationComplete(updatedBooking);
       onClose();
 
     } catch (error: any) {
       console.error('Cancellation error:', error);
-      setError(error.response?.data?.error || 'Failed to cancel booking');
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to cancel booking';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

@@ -476,6 +476,60 @@ export const reviewAPI = {
   }) => api.get('/reviews/admin/all', { params }),
 };
 
+// Social API
+export const socialAPI = {
+  // Get all posts with filters
+  getAllPosts: (params?: {
+    hospitalId?: number;
+    postType?: string;
+    isAdminVerified?: boolean;
+    limit?: number;
+    offset?: number;
+  }) => api.get('/social/posts', { params }),
+  
+  // Get single post by ID
+  getPostById: (id: number) => api.get(`/social/posts/${id}`),
+  
+  // Create new post
+  createPost: (data: {
+    hospitalId: number;
+    postType: 'experience' | 'complaint' | 'problem' | 'moment';
+    title: string;
+    content: string;
+  }) => api.post('/social/posts', data),
+  
+  // Update post
+  updatePost: (id: number, data: {
+    title?: string;
+    content?: string;
+    postType?: string;
+  }) => api.put(`/social/posts/${id}`, data),
+  
+  // Delete post
+  deletePost: (id: number) => api.delete(`/social/posts/${id}`),
+  
+  // Toggle like on post
+  toggleLike: (id: number) => api.post(`/social/posts/${id}/like`),
+  
+  // Get comments for a post
+  getComments: (id: number) => api.get(`/social/posts/${id}/comments`),
+  
+  // Add comment to post
+  addComment: (id: number, content: string) => api.post(`/social/posts/${id}/comments`, { content }),
+  
+  // Get user's posts
+  getUserPosts: () => api.get('/social/my-posts'),
+  
+  // Get social stats
+  getStats: () => api.get('/social/stats'),
+  
+  // Admin: Verify post
+  verifyPost: (id: number) => api.post(`/social/posts/${id}/verify`),
+  
+  // Admin: Unverify post
+  unverifyPost: (id: number) => api.post(`/social/posts/${id}/unverify`),
+};
+
 // Health check
 export const healthAPI = {
   check: () => api.get('/health'),

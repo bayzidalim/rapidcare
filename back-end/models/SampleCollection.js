@@ -278,16 +278,88 @@ class SampleCollection {
       WHERE hospital_id = ? AND status = 'completed'
     `);
 
+    const pendingApprovalStmt = this.db.prepare(`
+      SELECT COUNT(*) as count FROM sample_collection_requests 
+      WHERE hospital_id = ? AND approval_status = 'pending'
+    `);
+
     const totalRequests = totalRequestsStmt.get(hospitalId).count;
     const pendingRequests = pendingRequestsStmt.get(hospitalId).count;
     const completedRequests = completedRequestsStmt.get(hospitalId).count;
+    const pendingApproval = pendingApprovalStmt.get(hospitalId).count;
 
     return {
       totalRequests,
       pendingRequests,
       completedRequests,
+      pendingApproval,
       completionRate: totalRequests > 0 ? (completedRequests / totalRequests * 100).toFixed(1) : 0
     };
+  }
+
+  /**
+   * Get pending approval requests for a hospital
+   */
+  getPendingApprovalRequests(hospitalId, limit = 50, offset = 0) {
+    const stmt = this.db.prepare(`
+      SELECT 
+        scr.*,
+        u.name as user_name,
+        u.email as user_email,
+        u.phone as user_phone
+      FROM sample_collection_requests scr
+      LEFT JOIN users u ON scr.user_id = u.id
+      WHERE scr.hospital_id = ? AND scr.approval_status = 'pending'
+      ORDER BY scr.created_at DESC
+      LIMIT ? OFFSET ?
+    `);
+
+    const requests = stmt.all(hospitalId, limit, offset);
+
+    return requests.map(request => {
+      if (request.test_types) {
+        request.test_types = JSON.parse(request.test_types);
+      }
+      return request;
+    });
+  }
+
+  /**
+   * Approve a sample collection request
+   */
+  approveRequest(requestId, approvedBy) {
+    const stmt = this.db.prepare(`
+      UPDATE sample_collection_requests 
+      SET 
+        approval_status = 'approved',
+        approved_by = ?,
+        approved_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND approval_status = 'pending'
+    `);
+
+    const result = stmt.run(approvedBy, requestId);
+    return result.changes > 0;
+  }
+
+  /**
+   * Reject a sample collection request
+   */
+  rejectRequest(requestId, approvedBy, rejectionReason) {
+    const stmt = this.db.prepare(`
+      UPDATE sample_collection_requests 
+      SET 
+        approval_status = 'rejected',
+        approved_by = ?,
+        approved_at = CURRENT_TIMESTAMP,
+        rejection_reason = ?,
+        status = 'cancelled',
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND approval_status = 'pending'
+    `);
+
+    const result = stmt.run(approvedBy, rejectionReason, requestId);
+    return result.changes > 0;
   }
 }
 

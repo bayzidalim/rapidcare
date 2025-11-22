@@ -16,7 +16,8 @@ import { createNavigationConfigFromAuth } from '@/lib/navigationConfig';
 import { useNotificationCount } from '@/lib/hooks/useNotificationCount';
 import NotificationBell from './NotificationBell';
 import UserMenu from './UserMenu';
-import type { NavigationConfig, NavigationItem, ActionItem } from '@/lib/navigationConfig';
+import { MegaMenu } from './MegaMenu';
+import type { NavigationConfig, NavigationItem, ActionItem, MegaMenuGroup } from '@/lib/navigationConfig';
 
 const Navigation = () => {
   const pathname = usePathname();
@@ -311,9 +312,18 @@ const Navigation = () => {
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center">
               {/* Primary Navigation Items */}
-              <div className="flex items-center space-x-1 mr-8">
+              <div className="flex items-center space-x-1 mr-4">
                 {navigationConfig.primaryItems.map(renderNavigationItem)}
               </div>
+              
+              {/* Mega Menu Groups */}
+              {navigationConfig.megaMenuGroups && navigationConfig.megaMenuGroups.length > 0 && (
+                <div className="flex items-center space-x-1 mr-8">
+                  {navigationConfig.megaMenuGroups.map((group) => (
+                    <MegaMenu key={group.id} group={group} />
+                  ))}
+                </div>
+              )}
               
               {/* Secondary Navigation Items */}
               {navigationConfig.secondaryItems.length > 0 && (

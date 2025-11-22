@@ -1031,3 +1031,70 @@ export interface UpdateReviewData {
   comment?: string;
   isAnonymous?: boolean;
 }
+
+// Social Post Types
+export interface SocialPost {
+  id: number;
+  userId: number;
+  hospitalId: number;
+  postType: 'experience' | 'complaint' | 'problem' | 'moment';
+  title: string;
+  content: string;
+  isAdminVerified: boolean;
+  verifiedBy?: number;
+  verifiedAt?: string;
+  isActive: boolean;
+  likesCount: number;
+  commentsCount: number;
+  viewsCount: number;
+  createdAt: string;
+  updatedAt: string;
+  userName?: string;
+  userEmail?: string;
+  hospitalName?: string;
+  hospitalCity?: string;
+  verifiedByName?: string;
+  hasUserLiked?: boolean;
+  comments?: SocialComment[];
+}
+
+export interface SocialComment {
+  id: number;
+  postId: number;
+  userId: number;
+  content: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userName?: string;
+  userEmail?: string;
+}
+
+export interface CreateSocialPostData {
+  hospitalId: number;
+  postType: 'experience' | 'complaint' | 'problem' | 'moment';
+  title: string;
+  content: string;
+}
+
+export interface UpdateSocialPostData {
+  title?: string;
+  content?: string;
+  postType?: 'experience' | 'complaint' | 'problem' | 'moment';
+}
+
+export interface SocialPostFilters {
+  hospitalId?: number;
+  postType?: string;
+  isAdminVerified?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface SocialStats {
+  totalPosts: number;
+  verifiedPosts: number;
+  totalLikes: number;
+  totalComments: number;
+  totalViews: number;
+}

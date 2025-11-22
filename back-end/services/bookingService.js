@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const HospitalService = require('./hospitalService');
 const ValidationService = require('./validationService');
+const HospitalPricing = require('../models/HospitalPricing');
 
 class BookingService {
   // Create new booking
@@ -16,10 +17,13 @@ class BookingService {
       throw new Error(`${bookingData.resourceType} not available at this hospital`);
     }
 
-    // Calculate payment amount with 30% markup
-    const baseAmount = this.getBaseAmount(bookingData.resourceType, bookingData.estimatedDuration);
-    const markup = baseAmount * 0.3;
-    let totalAmount = baseAmount + markup;
+    // Calculate payment amount using hospital pricing
+    const costBreakdown = HospitalPricing.calculateBookingCost(
+      bookingData.hospitalId,
+      bookingData.resourceType,
+      bookingData.estimatedDuration || 24
+    );
+    let totalAmount = costBreakdown.total_cost;
 
     let rapidAssistanceCharge = 0;
     let rapidAssistantName = null;
@@ -259,8 +263,15 @@ class BookingService {
     };
   }
 
-  // Get base amount for resource type
-  static getBaseAmount(resourceType, duration = 24) {
+  // Get base amount for resource type (deprecated - use HospitalPricing.calculateBookingCost instead)
+  // Kept for backward compatibility
+  static getBaseAmount(resourceType, duration = 24, hospitalId = null) {
+    if (hospitalId) {
+      const costBreakdown = HospitalPricing.calculateBookingCost(hospitalId, resourceType, duration);
+      return costBreakdown.hospital_share; // Return base amount without service charge
+    }
+    
+    // Fallback to default rates if no hospitalId provided
     const baseRates = {
       beds: 120, // ৳120 per day
       icu: 600,  // ৳600 per day

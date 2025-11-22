@@ -22,23 +22,40 @@ class BookingStatusHistory {
    * @returns {number} The ID of the created history entry
    */
   static create(historyData) {
-    const stmt = db.prepare(`
-      INSERT INTO booking_status_history (
-        bookingId, oldStatus, newStatus, changedBy, reason, notes, timestamp
-      )
-      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `);
-    
-    const result = stmt.run(
-      historyData.bookingId,
-      historyData.oldStatus,
-      historyData.newStatus,
-      historyData.changedBy,
-      historyData.reason || null,
-      historyData.notes || null
-    );
-    
-    return result.lastInsertRowid;
+    try {
+      // Validate required fields
+      if (!historyData.bookingId) {
+        throw new Error('bookingId is required for status history');
+      }
+      if (!historyData.newStatus) {
+        throw new Error('newStatus is required for status history');
+      }
+      if (!historyData.changedBy) {
+        throw new Error('changedBy is required for status history');
+      }
+
+      const stmt = db.prepare(`
+        INSERT INTO booking_status_history (
+          bookingId, oldStatus, newStatus, changedBy, reason, notes, timestamp
+        )
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `);
+      
+      const result = stmt.run(
+        historyData.bookingId,
+        historyData.oldStatus || null,
+        historyData.newStatus,
+        historyData.changedBy,
+        historyData.reason || null,
+        historyData.notes || null
+      );
+      
+      return result.lastInsertRowid;
+    } catch (error) {
+      console.error('Error in BookingStatusHistory.create:', error);
+      console.error('History data:', historyData);
+      throw error;
+    }
   }
 
   /**
@@ -303,17 +320,58 @@ class BookingStatusHistory {
    * @param {number} cancelledBy - User who cancelled the booking
    * @param {string} reason - Reason for cancellation
    * @param {string} notes - Additional notes
+   * @param {string} oldStatus - Previous status of the booking (optional, defaults to 'pending' if not provided)
    * @returns {number} History entry ID
    */
-  static logCancellation(bookingId, cancelledBy, reason, notes = null) {
-    return this.create({
-      bookingId,
-      oldStatus: 'approved',
-      newStatus: 'cancelled',
-      changedBy: cancelledBy,
-      reason,
-      notes
-    });
+  static logCancellation(bookingId, cancelledBy, reason, notes = null, oldStatus = null) {
+    try {
+      // Validate required parameters
+      if (!bookingId) {
+        throw new Error('bookingId is required for cancellation logging');
+      }
+      if (!cancelledBy) {
+        throw new Error('cancelledBy is required for cancellation logging');
+      }
+      if (!reason) {
+        reason = 'Cancelled by user';
+      }
+
+      // If oldStatus is not provided, try to get it from the latest status history
+      if (!oldStatus) {
+        try {
+          const latestStatus = this.getLatestStatus(bookingId);
+          if (latestStatus && latestStatus.newStatus) {
+            oldStatus = latestStatus.newStatus;
+          } else {
+            // Default to 'pending' if no history exists
+            // This is safe because cancellations typically come from pending or approved status
+            oldStatus = 'pending';
+          }
+        } catch (error) {
+          console.warn('Could not get latest status for booking:', bookingId, error.message);
+          oldStatus = 'pending';
+        }
+      }
+      
+      return this.create({
+        bookingId: parseInt(bookingId),
+        oldStatus: oldStatus || 'pending',
+        newStatus: 'cancelled',
+        changedBy: parseInt(cancelledBy),
+        reason: reason || 'Cancelled by user',
+        notes: notes || null
+      });
+    } catch (error) {
+      console.error('Error in BookingStatusHistory.logCancellation:', error);
+      console.error('Cancellation data:', {
+        bookingId,
+        cancelledBy,
+        reason,
+        notes,
+        oldStatus
+      });
+      throw error;
+    }
   }
 
   /**

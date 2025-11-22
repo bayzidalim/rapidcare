@@ -329,34 +329,65 @@ class Booking {
   }
 
   static cancel(id, cancelledBy, reason, notes = null) {
-    const transaction = db.transaction(() => {
-      // Get current booking
+    try {
+      // Get current booking to capture old status BEFORE transaction
       const booking = this.findById(id);
       if (!booking) {
         throw new Error('Booking not found');
       }
       
-      if (!['pending', 'approved'].includes(booking.status)) {
+      const oldStatus = booking.status;
+      
+      if (!['pending', 'approved'].includes(oldStatus)) {
         throw new Error('Only pending or approved bookings can be cancelled');
       }
 
-      // Update booking
-      const stmt = db.prepare(`
-        UPDATE bookings 
-        SET status = 'cancelled', 
-            declineReason = ?,
-            authorityNotes = ?,
-            updatedAt = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `);
-      stmt.run(reason, notes, id);
+      // Validate cancelledBy is a valid user ID
+      if (!cancelledBy || isNaN(cancelledBy)) {
+        throw new Error('Invalid user ID for cancellation');
+      }
 
-      // Log the cancellation
-      BookingStatusHistory.logCancellation(id, cancelledBy, reason, notes);
-    });
+      // Validate reason
+      if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+        reason = 'Cancelled by user';
+      }
 
-    transaction();
-    return true;
+      const transaction = db.transaction(() => {
+        // Update booking
+        const stmt = db.prepare(`
+          UPDATE bookings 
+          SET status = 'cancelled', 
+              declineReason = ?,
+              authorityNotes = ?,
+              updatedAt = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `);
+        stmt.run(reason, notes || null, id);
+
+        // Log the cancellation with the actual old status
+        // If logging fails, don't fail the cancellation
+        try {
+          BookingStatusHistory.logCancellation(id, cancelledBy, reason, notes, oldStatus);
+        } catch (historyError) {
+          console.error('Failed to log cancellation history (non-fatal):', historyError);
+          // Don't throw - cancellation should still succeed even if history logging fails
+        }
+      });
+
+      transaction();
+      return true;
+    } catch (error) {
+      console.error('Error in Booking.cancel:', error);
+      console.error('Error details:', {
+        id,
+        cancelledBy,
+        reason,
+        notes,
+        errorMessage: error.message,
+        errorStack: error.stack
+      });
+      throw error;
+    }
   }
 
   /**

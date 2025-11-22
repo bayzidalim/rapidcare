@@ -95,7 +95,9 @@ const authorizeHospitalAuthority = (req, res, next) => {
     });
   }
 
-  if (!req.user.hospitalId) {
+  // Check hospitalId (set by UserService.getById) or fall back to hospital_id
+  const hospitalId = req.user.hospitalId || req.user.hospital_id;
+  if (!hospitalId) {
     return res.status(403).json({
       success: false,
       error: 'Hospital authority not assigned to any hospital'
@@ -129,8 +131,11 @@ const authorizeHospitalAccess = (req, res, next) => {
   }
 
   // Hospital authorities can only access their assigned hospital
-  if (req.user.userType === 'hospital-authority' && req.user.hospitalId === hospitalId) {
+  if (req.user.userType === 'hospital-authority') {
+    const userHospitalId = req.user.hospitalId || req.user.hospital_id;
+    if (userHospitalId === hospitalId) {
     return next();
+    }
   }
 
   return res.status(403).json({
@@ -235,7 +240,8 @@ const requireOwnHospital = (req, res, next) => {
 
   // Hospital authorities can only access their assigned hospital
   if (req.user.userType === 'hospital-authority') {
-    if (!req.user.hospital_id) {
+    const userHospitalId = req.user.hospitalId || req.user.hospital_id;
+    if (!userHospitalId) {
       return res.status(403).json({
         success: false,
         error: 'No hospital assigned to your account',
@@ -243,7 +249,7 @@ const requireOwnHospital = (req, res, next) => {
       });
     }
 
-    if (req.user.hospital_id !== hospitalId) {
+    if (userHospitalId !== hospitalId) {
       return res.status(403).json({
         success: false,
         error: 'Access denied. You can only manage your assigned hospital.',
@@ -272,7 +278,8 @@ const hasHospitalAccess = (user, hospitalId) => {
   if (!user) return false;
   if (user.userType === 'admin') return true;
   if (user.userType === 'hospital-authority') {
-    return user.hospital_id === parseInt(hospitalId);
+    const userHospitalId = user.hospitalId || user.hospital_id;
+    return userHospitalId === parseInt(hospitalId);
   }
   return false;
 };

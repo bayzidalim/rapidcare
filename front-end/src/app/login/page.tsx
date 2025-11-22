@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import AnimatedPage from '@/components/AnimatedPage';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -56,8 +57,9 @@ export default function LoginPage() {
     <div className="min-h-screen">
       <Navigation />
       
+      <AnimatedPage>
       <div className="max-w-md mx-auto px-4 py-16">
-        <Card>
+        <Card className="hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
               <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -126,6 +128,7 @@ export default function LoginPage() {
           </CardContent>
         </Card>
       </div>
+      </AnimatedPage>
     </div>
   );
 } 

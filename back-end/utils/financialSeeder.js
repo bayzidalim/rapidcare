@@ -23,19 +23,19 @@ const seedFinancialData = () => {
       return;
     }
 
-    // Seed hospital pricing data
+    // Seed hospital pricing data (5x increased prices)
     console.log('📊 Seeding hospital pricing data...');
     const pricingData = [
-      { hospitalId: hospitals[0].id, resourceType: 'beds', baseRate: 150.00, hourlyRate: 25.00, minimumCharge: 100.00, maximumCharge: 500.00 },
-      { hospitalId: hospitals[0].id, resourceType: 'icu', baseRate: 300.00, hourlyRate: 50.00, minimumCharge: 200.00, maximumCharge: 1000.00 },
-      { hospitalId: hospitals[0].id, resourceType: 'operationTheatres', baseRate: 500.00, hourlyRate: 100.00, minimumCharge: 400.00, maximumCharge: 2000.00 },
+      { hospitalId: hospitals[0].id, resourceType: 'beds', baseRate: 750.00, hourlyRate: 125.00, minimumCharge: 500.00, maximumCharge: 2500.00 },
+      { hospitalId: hospitals[0].id, resourceType: 'icu', baseRate: 1500.00, hourlyRate: 250.00, minimumCharge: 1000.00, maximumCharge: 5000.00 },
+      { hospitalId: hospitals[0].id, resourceType: 'operationTheatres', baseRate: 2500.00, hourlyRate: 500.00, minimumCharge: 2000.00, maximumCharge: 10000.00 },
     ];
 
     if (hospitals.length > 1) {
       pricingData.push(
-        { hospitalId: hospitals[1].id, resourceType: 'beds', baseRate: 120.00, hourlyRate: 20.00, minimumCharge: 80.00, maximumCharge: 400.00 },
-        { hospitalId: hospitals[1].id, resourceType: 'icu', baseRate: 250.00, hourlyRate: 40.00, minimumCharge: 150.00, maximumCharge: 800.00 },
-        { hospitalId: hospitals[1].id, resourceType: 'operationTheatres', baseRate: 450.00, hourlyRate: 80.00, minimumCharge: 350.00, maximumCharge: 1500.00 }
+        { hospitalId: hospitals[1].id, resourceType: 'beds', baseRate: 600.00, hourlyRate: 100.00, minimumCharge: 400.00, maximumCharge: 2000.00 },
+        { hospitalId: hospitals[1].id, resourceType: 'icu', baseRate: 1250.00, hourlyRate: 200.00, minimumCharge: 750.00, maximumCharge: 4000.00 },
+        { hospitalId: hospitals[1].id, resourceType: 'operationTheatres', baseRate: 2250.00, hourlyRate: 400.00, minimumCharge: 1750.00, maximumCharge: 7500.00 }
       );
     }
 
@@ -135,7 +135,7 @@ const seedFinancialData = () => {
         0.05, // 5% service charge
         24,   // 24 hours cancellation window
         0.80, // 80% refund
-        50.00, // $50 minimum booking
+        250.00, // $250 minimum booking (5x increased)
         JSON.stringify(['credit_card', 'debit_card', 'bank_transfer']),
         'Bookings can be cancelled up to 24 hours before the scheduled date for an 80% refund.',
         'Refunds will be processed within 3-5 business days to the original payment method.'

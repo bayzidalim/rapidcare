@@ -51,6 +51,7 @@ app.use('/api/polling', require('./routes/polling'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/reviews', require('./routes/reviews'));
+app.use('/api/social', require('./routes/social'));
 // Initialize reconciliation routes
 const { router: reconciliationRouter, initializeReconciliationService } = require('./routes/reconciliation');
 initializeReconciliationService(db);
@@ -83,9 +84,28 @@ app.use((err, req, res, _next) => {
     });
   }
   
-  console.error('RapidCare API Error:', err.stack);
-  res.status(500).json({ 
-    error: 'We\'re experiencing technical difficulties. Our team has been notified.',
+  console.error('RapidCare API Error:', err);
+  console.error('Error stack:', err.stack);
+  console.error('Request details:', {
+    method: req.method,
+    url: req.url,
+    body: req.body,
+    params: req.params,
+    user: req.user ? { id: req.user.id, userType: req.user.userType } : null
+  });
+  _next();
+  
+  // Return detailed error in development, generic in production
+  const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+  
+  res.status(err.status || 500).json({ 
+    success: false,
+    error: isDevelopment ? err.message : 'We\'re experiencing technical difficulties. Our team has been notified.',
+    details: isDevelopment ? {
+      message: err.message,
+      stack: err.stack,
+      code: err.code
+    } : undefined,
     service: 'RapidCare',
     timestamp: new Date().toISOString()
   });

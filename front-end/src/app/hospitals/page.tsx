@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Navigation from '@/components/Navigation';
+import AnimatedPage, { ScrollReveal, AnimatedList, AnimatedListItem } from '@/components/AnimatedPage';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -64,7 +65,10 @@ export default function HospitalsPage() {
             // Organize pricing by resource type (handle both 'bed'/'beds' variations)
             type PricingItem = { resourceType?: string; baseRate?: number; hourlyRate?: number; minimumCharge?: number; maximumCharge?: number; currency?: string };
             const pricing = {
-              beds: pricingData.find((p: PricingItem) => p.resourceType === 'beds' || p.resourceType === 'bed') || {
+              beds: pricingData.find((p: PricingItem) => 
+                p.resourceType === 'beds' || 
+                p.resourceType === 'bed'
+              ) || {
                 baseRate: 0,
                 hourlyRate: 0,
                 minimumCharge: 0,
@@ -78,7 +82,11 @@ export default function HospitalsPage() {
                 maximumCharge: 0,
                 currency: 'BDT'
               },
-              operationTheatres: pricingData.find((p: PricingItem) => p.resourceType === 'operationTheatres' || p.resourceType === 'operationTheater') || {
+              operationTheatres: pricingData.find((p: PricingItem) => 
+                p.resourceType === 'operationTheatres' || 
+                p.resourceType === 'operationTheater' ||
+                p.resourceType === 'operation_theatres'
+              ) || {
                 baseRate: 0,
                 hourlyRate: 0,
                 minimumCharge: 0,
@@ -184,6 +192,7 @@ export default function HospitalsPage() {
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
+        <AnimatedPage>
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-4">
             Find Emergency Care
@@ -192,8 +201,10 @@ export default function HospitalsPage() {
             Locate hospitals with available resources for immediate medical care when every second counts.
           </p>
         </div>
+        </AnimatedPage>
 
         {/* Search and Filters */}
+        <ScrollReveal>
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -261,6 +272,7 @@ export default function HospitalsPage() {
             </Button>
           </CardContent>
         </Card>
+        </ScrollReveal>
 
         {/* Results */}
         {loading ? (
@@ -269,9 +281,10 @@ export default function HospitalsPage() {
             <p className="mt-4 text-gray-600">Finding available medical facilities...</p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <AnimatedList className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {hospitals.map((hospital) => (
-              <Card key={hospital.id} className="hover:shadow-lg transition-all duration-300 flex flex-col h-full border-2 hover:border-blue-200">
+              <AnimatedListItem key={hospital.id}>
+              <Card className="hover:shadow-lg transition-all duration-300 flex flex-col h-full border-2 hover:border-blue-200 hover:scale-[1.02]">
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start mb-2">
                     <CardTitle className="text-lg font-semibold text-gray-900">{hospital.name}</CardTitle>
@@ -458,8 +471,9 @@ export default function HospitalsPage() {
                   </div>
                 </CardContent>
               </Card>
+              </AnimatedListItem>
             ))}
-          </div>
+          </AnimatedList>
         )}
 
         {!loading && hospitals.length === 0 && (

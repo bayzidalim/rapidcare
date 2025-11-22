@@ -129,7 +129,7 @@ class HospitalPricing {
    * @returns {array} Array of pricing records
    */
   static getHospitalPricing(hospitalId) {
-    const resourceTypes = ['bed', 'icu', 'operationTheatres'];
+    const resourceTypes = ['beds', 'icu', 'operationTheatres'];
     return resourceTypes.map(resourceType => this.getPricing(hospitalId, resourceType));
   }
   

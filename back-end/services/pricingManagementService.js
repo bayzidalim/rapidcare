@@ -29,35 +29,18 @@ class PricingManagementService {
         });
       }
 
-      // Comprehensive Taka pricing validation
-      const validation = ErrorHandler.validateTakaPricing(pricingData);
-      if (!validation.isValid) {
+      // Basic safety validation only (no negative amounts)
+      if (pricingData.baseRate !== undefined && pricingData.baseRate < 0) {
         return {
           success: false,
-          errors: validation.errors,
-          warnings: validation.warnings,
+          errors: ['Base rate cannot be negative'],
           message: 'Pricing validation failed'
-        };
-      }
-
-      // Additional business rule validation
-      const businessValidation = this.validatePricingBusinessRules(pricingData, hospital);
-      if (!businessValidation.isValid) {
-        return {
-          success: false,
-          errors: businessValidation.errors,
-          warnings: businessValidation.warnings,
-          suggestions: businessValidation.suggestions,
-          message: 'Pricing business rules validation failed'
         };
       }
 
       // Sanitize and round pricing data
       const sanitizedPricingData = this.sanitizePricingData(pricingData);
-
-      // Check for pricing constraints and market validation
-      const constraintValidation = this.validatePricingConstraints(sanitizedPricingData);
-      const warnings = constraintValidation.warnings || [];
+      const warnings = [];
 
       // Update pricing with error handling
       let updatedPricing;

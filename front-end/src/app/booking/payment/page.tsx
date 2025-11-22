@@ -326,6 +326,14 @@ function PaymentPageContent() {
         patientAge: bookingData.patientAge // Include age for backend validation
       };
 
+      console.log('💳 Sending payment data:', paymentData);
+      console.log('📊 Booking data:', {
+        id: bookingData.id,
+        paymentAmount: bookingData.paymentAmount,
+        patientAge: bookingData.patientAge,
+        rapidAssistance: bookingData.rapidAssistance
+      });
+
       const response = await bookingAPI.processPayment(paymentData);
 
       if (response.data.success) {
@@ -341,6 +349,8 @@ function PaymentPageContent() {
       }
     } catch (error: any) {
       console.error('Payment error:', error);
+      console.error('Payment error response:', error.response?.data);
+      console.error('Payment error status:', error.response?.status);
       
       // Enhanced error handling for rapid assistance related errors
       const errorMessage = error.response?.data?.error ||

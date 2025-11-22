@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -58,6 +59,8 @@ export default function BloodDonationPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('request');
+  const [selectedRequest, setSelectedRequest] = useState<BloodRequest | null>(null);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
 
   const {
     register,
@@ -141,6 +144,16 @@ export default function BloodDonationPage() {
       case 'cancelled': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const handleViewDetails = (request: BloodRequest) => {
+    setSelectedRequest(request);
+    setIsDetailsDialogOpen(true);
+  };
+
+  const handleDonateBlood = (requestId: number) => {
+    // Remove the card from the list
+    setBloodRequests(bloodRequests.filter(request => request.id !== requestId));
   };
 
   if (success) {
@@ -467,10 +480,17 @@ export default function BloodDonationPage() {
                       )}
 
                       <div className="flex gap-2">
-                        <Button variant="outline" className="flex-1">
+                        <Button 
+                          variant="outline" 
+                          className="flex-1"
+                          onClick={() => handleViewDetails(request)}
+                        >
                           View Details
                         </Button>
-                        <Button className="flex-1">
+                        <Button 
+                          className="flex-1"
+                          onClick={() => handleDonateBlood(request.id)}
+                        >
                           Donate Blood
                         </Button>
                       </div>
@@ -490,6 +510,210 @@ export default function BloodDonationPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Details Dialog */}
+      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Droplets className="w-5 h-5 text-red-600" />
+              Blood Request Details
+            </DialogTitle>
+            <DialogDescription>
+              Complete information about this blood donation request
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedRequest && (
+            <div className="space-y-6 mt-4">
+              {/* Blood Type and Urgency */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="text-3xl font-bold text-red-600">{selectedRequest.bloodType}</div>
+                  <div>
+                    <div className="font-semibold text-lg">{selectedRequest.units} Units Required</div>
+                    <Badge className={getUrgencyColor(selectedRequest.urgency)}>
+                      {selectedRequest.urgency.toUpperCase()}
+                    </Badge>
+                  </div>
+                </div>
+                <Badge className={getStatusColor(selectedRequest.status)}>
+                  {selectedRequest.status}
+                </Badge>
+              </div>
+
+              {/* Requester Information */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <User className="w-5 h-5" />
+                  Requester Information
+                </h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm text-gray-600">Name</Label>
+                    <div className="font-medium">{selectedRequest.requesterName}</div>
+                  </div>
+                  <div>
+                    <Label className="text-sm text-gray-600">Phone</Label>
+                    <div className="font-medium flex items-center gap-2">
+                      <Phone className="w-4 h-4" />
+                      {selectedRequest.requesterPhone}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hospital Information */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <MapPin className="w-5 h-5" />
+                  Hospital Information
+                </h3>
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-sm text-gray-600">Hospital Name</Label>
+                    <div className="font-medium">{selectedRequest.hospital?.name || 'Not specified'}</div>
+                  </div>
+                  <div>
+                    <Label className="text-sm text-gray-600">Address</Label>
+                    <div className="font-medium">{selectedRequest.hospital?.address || 'Not specified'}</div>
+                  </div>
+                  <div>
+                    <Label className="text-sm text-gray-600">Contact</Label>
+                    <div className="font-medium flex items-center gap-2">
+                      <Phone className="w-4 h-4" />
+                      {selectedRequest.hospital?.contact || 'Not specified'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Patient Information */}
+              {(selectedRequest.patientName || selectedRequest.patientAge || selectedRequest.medicalCondition) && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    <Heart className="w-5 h-5" />
+                    Patient Information
+                  </h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {selectedRequest.patientName && (
+                      <div>
+                        <Label className="text-sm text-gray-600">Patient Name</Label>
+                        <div className="font-medium">{selectedRequest.patientName}</div>
+                      </div>
+                    )}
+                    {selectedRequest.patientAge && (
+                      <div>
+                        <Label className="text-sm text-gray-600">Age</Label>
+                        <div className="font-medium">{selectedRequest.patientAge} years</div>
+                      </div>
+                    )}
+                    {selectedRequest.medicalCondition && (
+                      <div className="md:col-span-2">
+                        <Label className="text-sm text-gray-600">Medical Condition</Label>
+                        <div className="font-medium">{selectedRequest.medicalCondition}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Timeline Information */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Timeline
+                </h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm text-gray-600">Required By</Label>
+                    <div className="font-medium flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      {new Date(selectedRequest.requiredBy).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-sm text-gray-600">Request Created</Label>
+                    <div className="font-medium flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      {new Date(selectedRequest.createdAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Matched Donors */}
+              {selectedRequest.matchedDonors && selectedRequest.matchedDonors.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    <Users className="w-5 h-5" />
+                    Matched Donors ({selectedRequest.matchedDonors.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {selectedRequest.matchedDonors.map((donor, index) => (
+                      <div key={index} className="p-3 bg-gray-50 rounded-lg">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <div className="font-medium">{donor.donorName}</div>
+                            <div className="text-sm text-gray-600 flex items-center gap-2">
+                              <Phone className="w-3 h-3" />
+                              {donor.donorPhone}
+                            </div>
+                          </div>
+                          <Badge className={getStatusColor(donor.status)}>
+                            {donor.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              {selectedRequest.notes && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Additional Notes</Label>
+                  <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                    {selectedRequest.notes}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-4 border-t">
+                <Button 
+                  className="flex-1"
+                  onClick={() => {
+                    handleDonateBlood(selectedRequest.id);
+                    setIsDetailsDialogOpen(false);
+                  }}
+                >
+                  Donate Blood
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsDetailsDialogOpen(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

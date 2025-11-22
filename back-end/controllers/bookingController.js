@@ -220,11 +220,15 @@ exports.getPendingBookings = async (req, res) => {
     const { urgency, resourceType, limit, sortBy, sortOrder } = req.query;
 
     // Check if user has permission to view this hospital's bookings
-    if (req.user.userType === 'hospital-authority' && req.user.hospital_id !== parseInt(hospitalId)) {
+    if (req.user.userType === 'hospital-authority') {
+      // Use hospitalId from user object (set by UserService.getById)
+      const userHospitalId = req.user.hospitalId || req.user.hospital_id;
+      if (!userHospitalId || userHospitalId !== parseInt(hospitalId)) {
       return res.status(403).json({
         success: false,
         error: 'You can only view bookings for your assigned hospital'
       });
+      }
     }
 
     const options = {
@@ -279,11 +283,15 @@ exports.approveBooking = async (req, res) => {
     }
 
     // Check if user has permission to approve this booking
-    if (req.user.userType === 'hospital-authority' && req.user.hospitalId !== booking.hospitalId) {
+    if (req.user.userType === 'hospital-authority') {
+      // Use hospitalId from user object (set by UserService.getById)
+      const userHospitalId = req.user.hospitalId || req.user.hospital_id;
+      if (!userHospitalId || booking.hospitalId !== userHospitalId) {
       return res.status(403).json({
         success: false,
         error: 'You can only approve bookings for your assigned hospital'
       });
+      }
     }
 
     const approvalData = {

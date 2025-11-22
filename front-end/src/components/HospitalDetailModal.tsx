@@ -6,8 +6,7 @@ import {
   Dialog, 
   DialogContent, 
   DialogHeader, 
-  DialogTitle,
-  DialogClose
+  DialogTitle
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,14 +21,12 @@ import {
   Heart, 
   Scissors,
   Star,
-  X,
   DollarSign,
   Clock,
   User,
   Shield,
   Building2,
-  MessageSquare,
-  Plus
+  MessageSquare
 } from 'lucide-react';
 
 interface HospitalDetailModalProps {
@@ -93,16 +90,11 @@ export function HospitalDetailModal({ hospital, isOpen, onClose }: HospitalDetai
                 )}
               </div>
             </div>
-            <DialogClose asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <X className="h-4 w-4" />
-              </Button>
-            </DialogClose>
           </div>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <Building2 className="w-4 h-4" />
               Overview
@@ -110,10 +102,6 @@ export function HospitalDetailModal({ hospital, isOpen, onClose }: HospitalDetai
             <TabsTrigger value="reviews" className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" />
               Reviews
-            </TabsTrigger>
-            <TabsTrigger value="write-review" className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Write Review
             </TabsTrigger>
           </TabsList>
 
@@ -194,7 +182,7 @@ export function HospitalDetailModal({ hospital, isOpen, onClose }: HospitalDetai
                         <DollarSign className="w-3 h-3" />
                         {formatPrice(hospital.pricing.beds.baseRate, hospital.pricing.beds.currency)}/day
                       </div>
-                      {hospital.pricing.beds.hourlyRate > 0 && (
+                      {hospital.pricing.beds.hourlyRate && hospital.pricing.beds.hourlyRate > 0 && (
                         <div className="flex items-center gap-1 text-xs text-gray-600 mt-1">
                           <Clock className="w-3 h-3" />
                           {formatPrice(hospital.pricing.beds.hourlyRate, hospital.pricing.beds.currency)}/hr
@@ -232,7 +220,7 @@ export function HospitalDetailModal({ hospital, isOpen, onClose }: HospitalDetai
                         <DollarSign className="w-3 h-3" />
                         {formatPrice(hospital.pricing.icu.baseRate, hospital.pricing.icu.currency)}/day
                       </div>
-                      {hospital.pricing.icu.hourlyRate > 0 && (
+                      {hospital.pricing.icu.hourlyRate && hospital.pricing.icu.hourlyRate > 0 && (
                         <div className="flex items-center gap-1 text-xs text-gray-600 mt-1">
                           <Clock className="w-3 h-3" />
                           {formatPrice(hospital.pricing.icu.hourlyRate, hospital.pricing.icu.currency)}/hr
@@ -270,7 +258,7 @@ export function HospitalDetailModal({ hospital, isOpen, onClose }: HospitalDetai
                         <DollarSign className="w-3 h-3" />
                         {formatPrice(hospital.pricing.operationTheatres.baseRate, hospital.pricing.operationTheatres.currency)}/day
                       </div>
-                      {hospital.pricing.operationTheatres.hourlyRate > 0 && (
+                      {hospital.pricing.operationTheatres.hourlyRate && hospital.pricing.operationTheatres.hourlyRate > 0 && (
                         <div className="flex items-center gap-1 text-xs text-gray-600 mt-1">
                           <Clock className="w-3 h-3" />
                           {formatPrice(hospital.pricing.operationTheatres.hourlyRate, hospital.pricing.operationTheatres.currency)}/hr
@@ -313,10 +301,10 @@ export function HospitalDetailModal({ hospital, isOpen, onClose }: HospitalDetai
                         <p className="text-sm text-gray-600">{surgeon.specialization}</p>
                       </div>
                       <Badge 
-                        variant={surgeon.isAvailable ? "default" : "secondary"}
-                        className={surgeon.isAvailable ? "bg-green-100 text-green-800" : ""}
+                        variant={surgeon.available ? "default" : "secondary"}
+                        className={surgeon.available ? "bg-green-100 text-green-800" : ""}
                       >
-                        {surgeon.isAvailable ? 'Available' : 'Busy'}
+                        {surgeon.available ? 'Available' : 'Busy'}
                       </Badge>
                     </div>
                   </div>
@@ -340,22 +328,6 @@ export function HospitalDetailModal({ hospital, isOpen, onClose }: HospitalDetai
               hospitalId={hospital.id}
               canVote={true}
             />
-          </TabsContent>
-
-          <TabsContent value="write-review" className="mt-6">
-            <div className="bg-gray-50 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Write a Review for {hospital.name}
-              </h3>
-              <ReviewForm
-                hospitalId={hospital.id}
-                onSuccess={() => {
-                  setShowReviewForm(false);
-                  setActiveTab('reviews');
-                }}
-                onCancel={() => setActiveTab('overview')}
-              />
-            </div>
           </TabsContent>
         </Tabs>
       </DialogContent>

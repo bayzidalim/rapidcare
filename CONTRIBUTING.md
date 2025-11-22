@@ -147,7 +147,7 @@ describe('Component/Function Name', () => {
 
 ### API Documentation
 
-- **Update API.md** when adding/modifying endpoints
+- **Update docs/API_UPDATED.md** when adding/modifying endpoints
 - **Include request/response examples**
 - **Document error codes** and messages
 - **Add authentication requirements**
@@ -291,8 +291,8 @@ We follow [Semantic Versioning](https://semver.org/):
 ### Resources
 
 - [Project Documentation](./README.md)
-- [API Documentation](./docs/API.md)
-- [Deployment Guide](./DEPLOYMENT.md)
+- [API Documentation](./docs/API_UPDATED.md)
+- [Deployment Guide](./docs/DEPLOYMENT_UPDATED.md)
 - [Next.js Documentation](https://nextjs.org/docs)
 - [Express.js Documentation](https://expressjs.com/)
 

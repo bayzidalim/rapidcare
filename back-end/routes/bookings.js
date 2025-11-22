@@ -5,22 +5,7 @@ const db = require('../config/database');
 const { authenticate, requireRole } = require('../middleware/auth');
 const BookingApprovalService = require('../services/bookingApprovalService');
 const ValidationService = require('../services/validationService');
-
-// Calculate payment amount based on resource type and duration
-const calculatePaymentAmount = (resourceType, duration) => {
-  // Base rates in Taka (৳)
-  const baseRates = {
-    beds: 120,        // ৳120 per day
-    icu: 600,         // ৳600 per day  
-    operationTheatres: 1200 // ৳1200 per day
-  };
-
-  const baseRate = baseRates[resourceType] || 120;
-  const amount = baseRate * (duration / 24); // Daily rate
-  
-  // Add 30% service charge
-  return Math.round(amount * 1.3);
-};
+const HospitalPricing = require('../models/HospitalPricing');
 
 /**
  * @route   GET /api/bookings/my-bookings
@@ -197,10 +182,21 @@ router.post('/', authenticate, async (req, res) => {
       });
     }
     
+    // Calculate payment amount using hospital pricing
+    const parsedHospitalId = hospitalId ? parseInt(hospitalId) : null;
+    const parsedEstimatedDuration = estimatedDuration ? parseInt(estimatedDuration) : 24;
+    
+    // Get pricing from HospitalPricing model
+    const costBreakdown = HospitalPricing.calculateBookingCost(
+      parsedHospitalId,
+      resourceType,
+      parsedEstimatedDuration
+    );
+    
     // Create booking
     const bookingData = {
       userId: req.user.id,
-      hospitalId: hospitalId ? parseInt(hospitalId) : null,
+      hospitalId: parsedHospitalId,
       resourceType,
       patientName,
       patientAge: patientAge ? parseInt(patientAge) : null,
@@ -212,8 +208,8 @@ router.post('/', authenticate, async (req, res) => {
       urgency,
       surgeonId: surgeonId ? parseInt(surgeonId) : null,
       scheduledDate,
-      estimatedDuration: estimatedDuration ? parseInt(estimatedDuration) : 24,
-      paymentAmount: calculatePaymentAmount(resourceType, estimatedDuration ? parseInt(estimatedDuration) : 24),
+      estimatedDuration: parsedEstimatedDuration,
+      paymentAmount: costBreakdown.total_cost,
       rapidAssistance: rapidAssistance ? 1 : 0, // Convert boolean to number for SQLite
       rapidAssistantName: null,
       rapidAssistantPhone: null
@@ -279,8 +275,17 @@ router.post('/payment', authenticate, async (req, res) => {
   try {
     const { bookingId, transactionId, amount, rapidAssistance } = req.body;
     
+    console.log('💳 Payment request received:', {
+      bookingId,
+      transactionId,
+      amount,
+      rapidAssistance,
+      userId: req.user.id
+    });
+    
     // Validate required fields
     if (!bookingId || !transactionId) {
+      console.log('❌ Validation failed: Missing bookingId or transactionId');
       return res.status(400).json({
         success: false,
         error: 'Booking ID and transaction ID are required'
@@ -340,8 +345,21 @@ router.post('/payment', authenticate, async (req, res) => {
     // Calculate total payment amount
     const totalExpectedAmount = baseBookingAmount + rapidAssistanceCharge;
     
+    console.log('💰 Payment calculation:', {
+      bookingPaymentAmount: booking.paymentAmount,
+      baseBookingAmount,
+      rapidAssistanceCharge,
+      totalExpectedAmount,
+      receivedAmount: amount
+    });
+    
     // Validate amount if provided
     if (amount && Math.abs(parseFloat(amount) - totalExpectedAmount) > 0.01) {
+      console.log('❌ Amount mismatch:', {
+        expected: totalExpectedAmount,
+        received: amount,
+        difference: Math.abs(parseFloat(amount) - totalExpectedAmount)
+      });
       return res.status(400).json({
         success: false,
         error: `Payment amount mismatch. Expected: ${totalExpectedAmount}৳, Received: ${amount}৳`
@@ -418,6 +436,24 @@ router.post('/payment', authenticate, async (req, res) => {
       updateAmountStmt.run(paymentAmount, bookingId);
     }
     
+    // Create transaction record for payment history
+    const Transaction = require('../models/Transaction');
+    const transactionData = {
+      userId: req.user.id,
+      bookingId: bookingId,
+      hospitalId: booking.hospitalId,
+      amount: paymentAmount,
+      type: 'payment',
+      status: 'completed',
+      paymentMethod: 'bkash',
+      transactionId: transactionId,
+      gatewayTransactionId: paymentProcessingResult.gatewayTransactionId,
+      paymentData: JSON.stringify(itemizedBreakdown)
+    };
+    
+    console.log('💾 Creating transaction record:', transactionData);
+    Transaction.create(transactionData);
+    
     // If Rapid Assistance is requested, add the assistant details
     if (requestedRapidAssistance && !booking.rapidAssistance) {
       // Generate random Rapid Assistant details
@@ -442,7 +478,7 @@ router.post('/payment', authenticate, async (req, res) => {
             rapidAssistanceCharge = ?
         WHERE id = ?
       `);
-      updateStmt.run(true, randomAssistant.name, randomAssistant.phone, rapidAssistanceCharge, bookingId);
+      updateStmt.run(1, randomAssistant.name, randomAssistant.phone, rapidAssistanceCharge, bookingId);
     }
     
     // Get updated booking with all changes
@@ -634,8 +670,34 @@ router.put('/:id/status', authenticate, requireRole('hospital-authority'), async
  */
 router.put('/:id/cancel', authenticate, async (req, res) => {
   try {
+    const { reason, requestRefund } = req.body;
+    const bookingId = parseInt(req.params.id);
+    
+    console.log('Cancel booking request:', {
+      bookingId,
+      userId: req.user.id,
+      userType: req.user.userType,
+      reason,
+      requestRefund
+    });
+    
+    if (isNaN(bookingId) || bookingId <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid booking ID'
+      });
+    }
+    
+    // Validate user ID
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        error: 'User authentication required'
+      });
+    }
+    
     // Get booking
-    const booking = Booking.findById(req.params.id);
+    const booking = Booking.findById(bookingId);
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -643,27 +705,95 @@ router.put('/:id/cancel', authenticate, async (req, res) => {
       });
     }
     
-    // Check if user owns this booking
-    if (booking.userId !== req.user.id) {
-      return res.status(403).json({
+    console.log('Found booking:', {
+      id: booking.id,
+      userId: booking.userId,
+      status: booking.status,
+      hospitalId: booking.hospitalId
+    });
+    
+    // Check if user owns this booking (unless admin or hospital authority)
+    if (req.user.userType !== 'admin' && req.user.userType !== 'hospital-authority') {
+      if (booking.userId !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. You can only cancel your own bookings.'
+        });
+      }
+    }
+    
+    // Check if booking can be cancelled
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({
         success: false,
-        error: 'Access denied'
+        error: 'Booking is already cancelled'
       });
     }
     
-    // Cancel booking
-    Booking.cancel(req.params.id);
+    if (!['pending', 'approved'].includes(booking.status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot cancel booking with status: ${booking.status}. Only pending or approved bookings can be cancelled.`
+      });
+    }
+    
+    // Cancel booking with required parameters
+    const cancelReason = reason && reason.trim() ? reason.trim() : 'Cancelled by user';
+    const notes = requestRefund ? 'Refund requested' : null;
+    
+    // Ensure user ID is an integer
+    const userId = parseInt(req.user.id);
+    if (isNaN(userId) || userId <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid user ID'
+      });
+    }
+    
+    console.log('Calling Booking.cancel with:', {
+      bookingId,
+      cancelledBy: userId,
+      reason: cancelReason,
+      notes
+    });
+    
+    Booking.cancel(bookingId, userId, cancelReason, notes);
+    
+    // Get updated booking
+    const updatedBooking = Booking.findById(bookingId);
+    
+    if (!updatedBooking) {
+      console.error('Booking not found after cancellation:', bookingId);
+      return res.status(500).json({
+        success: false,
+        error: 'Booking was cancelled but could not be retrieved'
+      });
+    }
+    
+    console.log('Booking cancelled successfully:', bookingId);
     
     res.json({
       success: true,
+      data: updatedBooking,
       message: 'Booking cancelled successfully'
     });
     
   } catch (error) {
     console.error('Error cancelling booking:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Request details:', {
+      bookingId: req.params.id,
+      userId: req.user?.id,
+      body: req.body
+    });
+    
+    // Return detailed error message
+    const errorMessage = error.message || 'Failed to cancel booking. Please try again.';
+    
     res.status(500).json({
       success: false,
-      error: 'Server error'
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -675,10 +805,44 @@ router.put('/:id/cancel', authenticate, async (req, res) => {
  */
 router.get('/hospital/:hospitalId/pending', authenticate, requireRole(['hospital-authority', 'admin']), async (req, res) => {
   try {
-    const bookings = Booking.getPendingByHospital(req.params.hospitalId);
+    const hospitalId = parseInt(req.params.hospitalId);
+    const { urgency, resourceType, limit, sortBy, sortOrder } = req.query;
+
+    // Check if user has permission to view this hospital's bookings
+    if (req.user.userType === 'hospital-authority') {
+      // Use hospitalId from user object (set by UserService.getById)
+      const userHospitalId = req.user.hospitalId || req.user.hospital_id;
+      if (!userHospitalId || userHospitalId !== hospitalId) {
+        return res.status(403).json({
+          success: false,
+          error: 'You can only view bookings for your assigned hospital'
+        });
+      }
+    }
+
+    const options = {
+      urgency,
+      resourceType,
+      limit: limit ? parseInt(limit) : undefined,
+      sortBy,
+      sortOrder
+    };
+
+    const result = await BookingApprovalService.getPendingBookings(hospitalId, options);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.message
+      });
+    }
+
     res.json({
       success: true,
-      data: bookings
+      data: result.data.bookings,
+      totalCount: result.data.totalCount,
+      summary: result.data.summary,
+      filters: result.data.filters
     });
   } catch (error) {
     console.error('Error fetching pending bookings:', error);
@@ -727,11 +891,15 @@ router.put('/:id/approve', authenticate, requireRole(['hospital-authority', 'adm
     }
 
     // Check if user has permission to approve this booking
-    if (req.user.userType === 'hospital-authority' && booking.hospitalId !== req.user.hospitalId) {
+    if (req.user.userType === 'hospital-authority') {
+      // Use hospitalId from user object (set by UserService.getById)
+      const userHospitalId = req.user.hospitalId || req.user.hospital_id;
+      if (!userHospitalId || booking.hospitalId !== userHospitalId) {
       return res.status(403).json({
         success: false,
-        error: 'Access denied'
+          error: 'You can only approve bookings for your assigned hospital'
       });
+      }
     }
 
     const { notes, resourcesAllocated, scheduledDate, autoAllocateResources } = req.body || {};

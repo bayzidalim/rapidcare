@@ -11,7 +11,10 @@ import {
     LogIn,
     LogOut,
     TestTube,
-    Sparkles
+    Sparkles,
+    MessageSquare,
+    Activity,
+    Users
 } from 'lucide-react';
 
 // User role types
@@ -25,11 +28,25 @@ export interface NavigationItem {
     href: string;
     label: string;
     icon: LucideIcon;
+    description?: string;
+    badge?: string;
     roles?: UserRole[];
     showOnMobile?: boolean;
     priority: NavigationPriority;
     requiresAuth?: boolean;
     excludeRoles?: UserRole[];
+}
+
+// Mega menu group interface
+export interface MegaMenuGroup {
+    id: string;
+    label: string;
+    icon: LucideIcon;
+    items: NavigationItem[];
+    priority: NavigationPriority;
+    showOnMobile?: boolean;
+    requiresAuth?: boolean;
+    roles?: UserRole[];
 }
 
 // Action item types for special navigation elements
@@ -48,6 +65,7 @@ export interface ActionItem {
 export interface NavigationConfig {
     primaryItems: NavigationItem[];
     secondaryItems: NavigationItem[];
+    megaMenuGroups: MegaMenuGroup[];
     actionItems: ActionItem[];
     mobileItems: NavigationItem[];
 }
@@ -67,7 +85,78 @@ export interface AuthState {
     user: NavigationUser | null;
 }
 
-// Base navigation items configuration
+// Mega menu groups configuration
+const BASE_MEGA_MENU_GROUPS: MegaMenuGroup[] = [
+    {
+        id: 'emergency-services',
+        label: 'Emergency Services',
+        icon: Activity,
+        priority: 'primary',
+        showOnMobile: true,
+        items: [
+            {
+                href: '/booking',
+                label: 'Book Now',
+                icon: Calendar,
+                description: 'Book hospital beds, ICU, or operation theatres',
+                priority: 'primary',
+                showOnMobile: true,
+                requiresAuth: true,
+                roles: ['user'],
+                excludeRoles: ['hospital-authority']
+            },
+            {
+                href: '/rapid-collection',
+                label: 'Rapid Collection',
+                icon: TestTube,
+                description: 'Home sample collection service',
+                priority: 'primary',
+                showOnMobile: true,
+                requiresAuth: false
+            },
+            {
+                href: '/rapid-analyze',
+                label: 'Rapid Analyze',
+                icon: Sparkles,
+                description: 'Medicine information and alternatives',
+                badge: 'New',
+                priority: 'primary',
+                showOnMobile: true,
+                requiresAuth: true,
+                roles: ['user']
+            }
+        ]
+    },
+    {
+        id: 'community',
+        label: 'Community',
+        icon: Users,
+        priority: 'primary',
+        showOnMobile: true,
+        items: [
+            {
+                href: '/donate-blood',
+                label: 'Blood Donation',
+                icon: Droplets,
+                description: 'Donate blood and save lives',
+                priority: 'primary',
+                showOnMobile: true,
+                requiresAuth: false
+            },
+            {
+                href: '/rapid-social',
+                label: 'Rapid Social',
+                icon: MessageSquare,
+                description: 'Connect with the healthcare community',
+                priority: 'primary',
+                showOnMobile: true,
+                requiresAuth: false
+            }
+        ]
+    }
+];
+
+// Base navigation items configuration (standalone items)
 const BASE_NAVIGATION_ITEMS: NavigationItem[] = [
     {
         href: '/',
@@ -81,41 +170,6 @@ const BASE_NAVIGATION_ITEMS: NavigationItem[] = [
         href: '/hospitals',
         label: 'Hospitals',
         icon: Building2,
-        priority: 'primary',
-        showOnMobile: true,
-        requiresAuth: false
-    },
-    {
-        href: '/booking',
-        label: 'Book Now',
-        icon: Calendar,
-        priority: 'primary',
-        showOnMobile: true,
-        requiresAuth: true,
-        roles: ['user'], // Removed hospital-authority
-        excludeRoles: ['hospital-authority'] // Explicitly exclude hospital-authority
-    },
-    {
-        href: '/rapid-collection',
-        label: 'Rapid Collection',
-        icon: TestTube,
-        priority: 'primary',
-        showOnMobile: true,
-        requiresAuth: false
-    },
-    {
-        href: '/rapid-analyze',
-        label: 'Rapid Analyze',
-        icon: Sparkles,
-        priority: 'primary',
-        showOnMobile: true,
-        requiresAuth: true,
-        roles: ['user']
-    },
-    {
-        href: '/donate-blood',
-        label: 'Blood Donation',
-        icon: Droplets,
         priority: 'primary',
         showOnMobile: true,
         requiresAuth: false
@@ -222,6 +276,31 @@ export function filterNavigationItems(
 }
 
 /**
+ * Filters mega menu groups based on user authentication state and role
+ */
+export function filterMegaMenuGroups(
+    groups: MegaMenuGroup[],
+    authState: AuthState
+): MegaMenuGroup[] {
+    return groups
+        .map(group => {
+            // Filter items within the group
+            const filteredItems = filterNavigationItems(group.items, authState);
+            
+            // Only return group if it has visible items
+            if (filteredItems.length === 0) {
+                return null;
+            }
+
+            return {
+                ...group,
+                items: filteredItems
+            };
+        })
+        .filter((group): group is MegaMenuGroup => group !== null);
+}
+
+/**
  * Filters action items based on user authentication state and role
  */
 export function filterActionItems(
@@ -262,6 +341,7 @@ export function filterActionItems(
 export function createNavigationConfig(authState: AuthState): NavigationConfig {
     // Filter all navigation items
     const filteredItems = filterNavigationItems(BASE_NAVIGATION_ITEMS, authState);
+    const filteredMegaMenuGroups = filterMegaMenuGroups(BASE_MEGA_MENU_GROUPS, authState);
     const filteredActionItems = filterActionItems(BASE_ACTION_ITEMS, authState);
 
     // Separate items by priority
@@ -269,11 +349,16 @@ export function createNavigationConfig(authState: AuthState): NavigationConfig {
     const secondaryItems = filteredItems.filter(item => item.priority === 'secondary');
 
     // Mobile items include all filtered items that should show on mobile
-    const mobileItems = filteredItems.filter(item => item.showOnMobile);
+    // Plus all items from mega menu groups
+    const megaMenuMobileItems = filteredMegaMenuGroups.flatMap(group => 
+        group.items.filter(item => item.showOnMobile)
+    );
+    const mobileItems = [...filteredItems.filter(item => item.showOnMobile), ...megaMenuMobileItems];
 
     return {
         primaryItems,
         secondaryItems,
+        megaMenuGroups: filteredMegaMenuGroups,
         actionItems: filteredActionItems,
         mobileItems
     };
@@ -366,4 +451,4 @@ export function useNavigationConfig(): NavigationConfig {
 }
 
 // Export base configurations for testing
-export { BASE_NAVIGATION_ITEMS, BASE_ACTION_ITEMS };
+export { BASE_NAVIGATION_ITEMS, BASE_MEGA_MENU_GROUPS, BASE_ACTION_ITEMS };

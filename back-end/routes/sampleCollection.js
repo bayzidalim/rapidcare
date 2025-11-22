@@ -311,9 +311,9 @@ router.put('/hospital/requests/:requestId/assign-agent', authenticate, requireRo
  * GET /api/sample-collection/hospital/stats
  * Get collection statistics for the hospital
  */
-router.get('/hospital/stats', authenticate, requireRole(['hospital_authority', 'admin']), async (req, res) => {
+router.get('/hospital/stats', authenticate, requireRole(['hospital-authority', 'admin']), async (req, res) => {
   try {
-    const hospitalId = req.user.hospital_id;
+    const hospitalId = req.user.hospital_id || req.user.hospitalId;
     if (!hospitalId) {
       return res.status(400).json({
         success: false,
@@ -331,6 +331,110 @@ router.get('/hospital/stats', authenticate, requireRole(['hospital_authority', '
     });
   }
 });
+
+/**
+ * GET /api/sample-collection/hospital/pending-approvals
+ * Get pending approval requests for the hospital
+ */
+router.get('/hospital/pending-approvals', authenticate, requireRole(['hospital-authority', 'admin']), async (req, res) => {
+  try {
+    const hospitalId = req.user.hospital_id || req.user.hospitalId;
+    if (!hospitalId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Hospital ID not found in user profile'
+      });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+
+    const result = await sampleCollectionService.getPendingApprovalRequests(
+      hospitalId,
+      page,
+      limit
+    );
+    res.json(result);
+  } catch (error) {
+    const handledError = ErrorHandler.handleError(error, 'Failed to get pending approvals');
+    res.status(handledError.statusCode || 500).json({ 
+      success: false,
+      error: handledError.message 
+    });
+  }
+});
+
+/**
+ * PUT /api/sample-collection/hospital/requests/:requestId/approve
+ * Approve a sample collection request (hospital authority only)
+ */
+router.put('/hospital/requests/:requestId/approve', authenticate, requireRole(['hospital-authority', 'admin']), async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const hospitalId = req.user.hospital_id || req.user.hospitalId;
+    
+    if (!hospitalId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Hospital ID not found in user profile'
+      });
+    }
+
+    const result = await sampleCollectionService.approveRequest(
+      parseInt(requestId),
+      req.user.id,
+      hospitalId
+    );
+    res.json(result);
+  } catch (error) {
+    const handledError = ErrorHandler.handleError(error, 'Failed to approve request');
+    res.status(handledError.statusCode || 500).json({ 
+      success: false,
+      error: handledError.message 
+    });
+  }
+});
+
+/**
+ * PUT /api/sample-collection/hospital/requests/:requestId/reject
+ * Reject a sample collection request (hospital authority only)
+ */
+router.put('/hospital/requests/:requestId/reject', authenticate, requireRole(['hospital-authority', 'admin']), async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { reason } = req.body;
+    const hospitalId = req.user.hospital_id || req.user.hospitalId;
+
+    if (!hospitalId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Hospital ID not found in user profile'
+      });
+    }
+
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Rejection reason is required'
+      });
+    }
+
+    const result = await sampleCollectionService.rejectRequest(
+      parseInt(requestId),
+      req.user.id,
+      hospitalId,
+      reason.trim()
+    );
+    res.json(result);
+  } catch (error) {
+    const handledError = ErrorHandler.handleError(error, 'Failed to reject request');
+    res.status(handledError.statusCode || 500).json({ 
+      success: false,
+      error: handledError.message 
+    });
+  }
+});
+
 
 // Error handling middleware
 router.use((error, req, res, _next) => {

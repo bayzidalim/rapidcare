@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Navigation from '@/components/Navigation';
+import AnimatedPage, { ScrollReveal, AnimatedList, AnimatedListItem } from '@/components/AnimatedPage';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,7 @@ import ResourceManagementDashboard from '@/components/ResourceManagementDashboar
 import HospitalApprovalStatus from '@/components/HospitalApprovalStatus';
 import HospitalPricingManagement from '@/components/HospitalPricingManagement';
 import BookingApprovalInterface from '@/components/BookingApprovalInterface';
+import SampleCollectionApproval from '@/components/SampleCollectionApproval';
 import {
   Calendar,
   Heart,
@@ -655,6 +657,7 @@ export default function DashboardPage() {
             {isAuthority && hospital?.approvalStatus === 'approved' ? (
               <>
                 <TabsTrigger value="hospital-bookings">Hospital Bookings</TabsTrigger>
+                <TabsTrigger value="sample-collection">Sample Collection</TabsTrigger>
                 <TabsTrigger value="pricing">Pricing Management</TabsTrigger>
                 <TabsTrigger value="analytics">Analytics</TabsTrigger>
                 <TabsTrigger value="hospital-status">Hospital Status</TabsTrigger>
@@ -691,6 +694,41 @@ export default function DashboardPage() {
                     <h3 className="text-lg font-medium text-gray-900 mb-2">Hospital data not loaded</h3>
                     <p className="text-gray-600 mb-4">
                       Cannot display bookings because the hospital data could not be loaded.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* Hospital Authority Sample Collection Approvals Tab */}
+          <TabsContent value="sample-collection">
+            {hospital ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Sample Collection Approvals</CardTitle>
+                  <CardDescription>
+                    Review and approve home sample collection requests from patients.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SampleCollectionApproval hospitalId={hospital.id} />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Sample Collection Approvals</CardTitle>
+                  <CardDescription>
+                    Review and approve home sample collection requests.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8">
+                    <AlertTriangle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Hospital data not loaded</h3>
+                    <p className="text-gray-600 mb-4">
+                      Cannot display sample collection requests because the hospital data could not be loaded.
                     </p>
                   </div>
                 </CardContent>

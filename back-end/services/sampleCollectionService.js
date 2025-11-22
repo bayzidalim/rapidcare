@@ -452,6 +452,142 @@ class SampleCollectionService {
       throw ErrorHandler.handleError(error, 'Failed to cancel request');
     }
   }
+
+  /**
+   * Get pending approval requests for a hospital
+   */
+  async getPendingApprovalRequests(hospitalId, page = 1, limit = 50) {
+    try {
+      const offset = (page - 1) * limit;
+      const requests = this.sampleCollection.getPendingApprovalRequests(
+        hospitalId,
+        limit,
+        offset
+      );
+
+      // Add test details for each request
+      const enrichedRequests = requests.map(request => {
+        const testDetails = this.getTestDetailsByIds(request.test_types || []);
+        return {
+          ...request,
+          testDetails
+        };
+      });
+
+      return {
+        success: true,
+        data: enrichedRequests,
+        pagination: {
+          page,
+          limit,
+          hasMore: requests.length === limit
+        }
+      };
+
+    } catch (error) {
+      console.error('Error getting pending approval requests:', error);
+      throw ErrorHandler.handleError(error, 'Failed to get pending approval requests');
+    }
+  }
+
+  /**
+   * Approve a sample collection request
+   */
+  async approveRequest(requestId, approvedBy, hospitalId) {
+    try {
+      const request = this.sampleCollection.getRequestById(requestId);
+      
+      if (!request) {
+        throw ErrorHandler.createError('Collection request not found', 404);
+      }
+
+      // Verify the request belongs to this hospital
+      if (request.hospital_id !== hospitalId) {
+        throw ErrorHandler.createError('Access denied. This request does not belong to your hospital.', 403);
+      }
+
+      // Check if already approved or rejected
+      if (request.approval_status === 'approved') {
+        throw ErrorHandler.createError('Request is already approved', 400);
+      }
+
+      if (request.approval_status === 'rejected') {
+        throw ErrorHandler.createError('Cannot approve a rejected request', 400);
+      }
+
+      const approved = this.sampleCollection.approveRequest(requestId, approvedBy);
+      
+      if (!approved) {
+        throw ErrorHandler.createError('Failed to approve request', 500);
+      }
+
+      // Auto-assign an available agent after approval
+      const availableAgent = this.collectionAgent.getAvailableAgent(hospitalId);
+      if (availableAgent) {
+        this.sampleCollection.assignAgent(requestId, availableAgent.id);
+      }
+
+      const updatedRequest = this.sampleCollection.getRequestById(requestId);
+      
+      return {
+        success: true,
+        data: updatedRequest,
+        message: availableAgent 
+          ? `Request approved successfully. ${availableAgent.name} has been assigned.`
+          : 'Request approved successfully. An agent will be assigned shortly.'
+      };
+
+    } catch (error) {
+      console.error('Error approving request:', error);
+      throw ErrorHandler.handleError(error, 'Failed to approve request');
+    }
+  }
+
+  /**
+   * Reject a sample collection request
+   */
+  async rejectRequest(requestId, rejectedBy, hospitalId, reason) {
+    try {
+      const request = this.sampleCollection.getRequestById(requestId);
+      
+      if (!request) {
+        throw ErrorHandler.createError('Collection request not found', 404);
+      }
+
+      // Verify the request belongs to this hospital
+      if (request.hospital_id !== hospitalId) {
+        throw ErrorHandler.createError('Access denied. This request does not belong to your hospital.', 403);
+      }
+
+      // Check if already approved or rejected
+      if (request.approval_status === 'approved') {
+        throw ErrorHandler.createError('Cannot reject an approved request', 400);
+      }
+
+      if (request.approval_status === 'rejected') {
+        throw ErrorHandler.createError('Request is already rejected', 400);
+      }
+
+      const rejected = this.sampleCollection.rejectRequest(requestId, rejectedBy, reason);
+      
+      if (!rejected) {
+        throw ErrorHandler.createError('Failed to reject request', 500);
+      }
+
+      const updatedRequest = this.sampleCollection.getRequestById(requestId);
+      
+      return {
+        success: true,
+        data: updatedRequest,
+        message: 'Request rejected successfully'
+      };
+
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+      throw ErrorHandler.handleError(error, 'Failed to reject request');
+    }
+  }
 }
+
 
 module.exports = SampleCollectionService;

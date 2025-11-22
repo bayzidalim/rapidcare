@@ -113,19 +113,61 @@ function BookingPageContent() {
     }
   };
 
-  const calculateAmount = (resourceType: string, duration: number, includeRapidAssistance: boolean) => {
-    // Base rates in Taka (৳)
-    const baseRates = {
-      beds: 120,        // ৳120 per day
-      icu: 600,        // ৳600 per day  
-      operationTheatres: 1200, // ৳1200 per day
-    };
+  const [pricing, setPricing] = useState<any>(null);
+  const [loadingPricing, setLoadingPricing] = useState(false);
 
-    const baseRate = baseRates[resourceType as keyof typeof baseRates] || 120;
-    const amount = baseRate * (duration / 24); // Daily rate
-    
-    // Add 30% service charge
-    let totalAmount = amount * 1.3;
+  // Fetch pricing when hospital is selected
+  useEffect(() => {
+    if (formData.hospitalId) {
+      loadHospitalPricing(parseInt(formData.hospitalId));
+      const hospital = hospitals.find(h => h.id === parseInt(formData.hospitalId));
+      setSelectedHospital(hospital || null);
+    }
+  }, [formData.hospitalId, hospitals]);
+
+  const loadHospitalPricing = async (hospitalId: number) => {
+    try {
+      setLoadingPricing(true);
+      const { pricingAPI } = await import('@/lib/api');
+      const response = await pricingAPI.getHospitalPricing(hospitalId);
+      if (response.data.success) {
+        const pricingData = response.data.data;
+        // Organize pricing by resource type
+        const organizedPricing: any = {};
+        pricingData.forEach((p: any) => {
+          const resourceType = p.resourceType === 'bed' ? 'beds' : p.resourceType;
+          organizedPricing[resourceType] = {
+            baseRate: p.baseRate || p.base_price || 0,
+            serviceChargePercentage: p.serviceChargePercentage || p.service_charge_percentage || 30,
+            totalPrice: p.totalPrice || p.total_price || 0
+          };
+        });
+        setPricing(organizedPricing);
+      }
+    } catch (error) {
+      console.error('Failed to load pricing:', error);
+      // Fallback to default pricing if API fails
+      setPricing({
+        beds: { baseRate: 600, serviceChargePercentage: 30, totalPrice: 780 },
+        icu: { baseRate: 2500, serviceChargePercentage: 30, totalPrice: 3250 },
+        operationTheatres: { baseRate: 5000, serviceChargePercentage: 30, totalPrice: 6500 }
+      });
+    } finally {
+      setLoadingPricing(false);
+    }
+  };
+
+  const calculateAmount = (resourceType: string, duration: number, includeRapidAssistance: boolean) => {
+    // Use actual pricing from API if available
+    let dailyRate = 780; // Default fallback (600 base + 30% service charge)
+
+    if (pricing && pricing[resourceType]) {
+      // Use totalPrice which already includes service charge
+      dailyRate = pricing[resourceType].totalPrice;
+    }
+
+    // Calculate total based on duration (duration is in hours, dailyRate is per 24 hours)
+    let totalAmount = dailyRate * (duration / 24);
 
     if (includeRapidAssistance) {
       totalAmount += 200;
@@ -245,6 +287,7 @@ function BookingPageContent() {
         const booking = response.data.data;
         
         // Store booking data for payment page
+        // Use paymentAmount from backend (which uses actual hospital pricing)
         const paymentData = {
           id: booking.id,
           patientName: booking.patientName,
@@ -253,7 +296,7 @@ function BookingPageContent() {
           estimatedDuration: booking.estimatedDuration,
           scheduledDate: booking.scheduledDate,
           urgency: booking.urgency,
-          paymentAmount: amount,
+          paymentAmount: booking.paymentAmount, // Use backend-calculated amount
           patientAge: booking.patientAge, // Add patientAge field
           rapidAssistance: rapidAssistance
         };
@@ -645,26 +688,49 @@ function BookingPageContent() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span>Base Rate ({formData.resourceType})</span>
-                      <span>৳{Math.round(calculateAmount(formData.resourceType, parseInt(formData.estimatedDuration) || 24, false) / 1.3)}</span>
+                  {loadingPricing ? (
+                    <div className="text-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                      <p className="text-sm text-gray-600">Loading pricing...</p>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Service Charge (30%)</span>
-                      <span>৳{Math.round(calculateAmount(formData.resourceType, parseInt(formData.estimatedDuration) || 24, false) * 0.3)}</span>
+                  ) : (
+                    <div className="space-y-2">
+                      {(() => {
+                        const duration = parseInt(formData.estimatedDuration) || 24;
+                        const serviceChargePercentage = pricing && pricing[formData.resourceType] 
+                          ? pricing[formData.resourceType].serviceChargePercentage 
+                          : 30;
+                        const baseRate = pricing && pricing[formData.resourceType]
+                          ? pricing[formData.resourceType].baseRate
+                          : 600;
+                        const baseAmount = Math.round(baseRate * (duration / 24));
+                        const serviceCharge = Math.round(baseAmount * (serviceChargePercentage / 100));
+                        
+                        return (
+                          <>
+                            <div className="flex justify-between">
+                              <span>Base Rate ({formData.resourceType})</span>
+                              <span>৳{baseAmount.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Service Charge ({serviceChargePercentage}%)</span>
+                              <span>৳{serviceCharge.toLocaleString()}</span>
+                            </div>
+                            {rapidAssistance && (
+                              <div className="flex justify-between">
+                                <span>Rapid Assistance</span>
+                                <span>৳200</span>
+                              </div>
+                            )}
+                            <div className="border-t pt-2 flex justify-between font-bold text-lg">
+                              <span>Total Amount</span>
+                              <span className="text-green-600">৳{calculateAmount(formData.resourceType, duration, rapidAssistance).toLocaleString()}</span>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
-                    {rapidAssistance && (
-                      <div className="flex justify-between">
-                        <span>Rapid Assistance</span>
-                        <span>৳200</span>
-                      </div>
-                    )}
-                    <div className="border-t pt-2 flex justify-between font-bold text-lg">
-                      <span>Total Amount</span>
-                      <span className="text-green-600">৳{calculateAmount(formData.resourceType, parseInt(formData.estimatedDuration) || 24, rapidAssistance)}</span>
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             )}
