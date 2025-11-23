@@ -69,6 +69,7 @@ initializeSampleCollectionService(db);
 app.use('/api/sample-collection', sampleCollectionRouter);
 
 app.use('/api/security', require('./routes/security'));
+app.use('/api/setup', require('./routes/setup'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
