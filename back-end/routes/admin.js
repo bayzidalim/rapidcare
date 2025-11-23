@@ -46,4 +46,22 @@ router.get('/service-charges', adminController.getServiceChargeAnalytics);
 // Admin Balance Routes
 router.use('/balance', adminBalanceRoutes);
 
+// Database seeding endpoint (for initial setup only)
+router.post('/seed-database', async (req, res) => {
+  try {
+    const { seedDatabase } = require('../utils/seeder');
+    await seedDatabase();
+    res.json({ 
+      success: true, 
+      message: 'Database seeded successfully with sample hospitals and users' 
+    });
+  } catch (error) {
+    console.error('Seed error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router; 

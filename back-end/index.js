@@ -8,7 +8,13 @@ const db = require('./config/database');
 const app = express();
 
 // Middleware
-app.use(cors());
+// Configure CORS to allow requests from frontend
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || '*',
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Database connection
@@ -72,6 +78,33 @@ app.get('/api/health', (req, res) => {
     service: 'RapidCare',
     timestamp: new Date().toISOString()
   });
+});
+
+// One-time database seeding endpoint (remove after use)
+app.post('/api/setup/seed', async (req, res) => {
+  try {
+    // Check if hospitals already exist
+    const existingHospitals = db.prepare('SELECT COUNT(*) as count FROM hospitals').get();
+    if (existingHospitals.count > 0) {
+      return res.json({ 
+        success: false, 
+        message: 'Database already seeded. Remove this endpoint for security.' 
+      });
+    }
+
+    const { seedDatabase } = require('./utils/seeder');
+    await seedDatabase();
+    res.json({ 
+      success: true, 
+      message: 'Database seeded successfully! You can now remove this endpoint.' 
+    });
+  } catch (error) {
+    console.error('Seed error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
 });
 
 // Error handling middleware
