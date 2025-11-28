@@ -69,15 +69,15 @@ export function validateBookingForPayment(
   if (bookingData.scheduledDate) {
     const scheduledDate = new Date(bookingData.scheduledDate);
     const now = new Date();
-    
+
     if (scheduledDate <= now) {
       errors.push('Scheduled date must be in the future');
     }
-    
+
     // Check if date is too far in the future (1 year)
     const oneYearFromNow = new Date();
     oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-    
+
     if (scheduledDate > oneYearFromNow) {
       warnings.push('Scheduled date is more than 1 year in the future');
     }
@@ -112,7 +112,7 @@ export function validateBookingForPayment(
  */
 function getResourceAvailability(hospital: Hospital, resourceType: string): number {
   if (!hospital.resources) return 0;
-  
+
   switch (resourceType) {
     case 'bed': return hospital.resources.beds?.available || 0;
     case 'icu': return hospital.resources.icu?.available || 0;
@@ -130,7 +130,7 @@ export function validateTransactionId(transactionId: string): { isValid: boolean
   }
 
   const trimmedId = transactionId.trim();
-  
+
   // Simple validation - just check if it's not empty and has reasonable length
   if (trimmedId.length < 3) {
     return { isValid: false, error: 'Transaction ID must be at least 3 characters' };
@@ -150,41 +150,41 @@ export function validateTransactionId(transactionId: string): { isValid: boolean
 export function calculatePaymentBreakdown(
   resourceType: string,
   duration: number,
-  baseRates?: { [key: string]: number }
+  baseRates?: Record<string, number>
 ): {
   baseAmount: number;
   serviceCharge: number;
   totalAmount: number;
   breakdown: Array<{ description: string; amount: number }>;
 } {
-  const defaultRates = {
+  const defaultRates: Record<string, number> = {
     bed: 100,
     icu: 500,
     operationTheatres: 1000,
   };
 
-  const rates = baseRates || defaultRates;
-  const baseRate = rates[resourceType] || rates.bed;
+  const rates: Record<string, number> = baseRates ?? defaultRates;
+  const baseRate = rates[resourceType] ?? rates.bed;
   const baseAmount = Math.round(baseRate * (duration / 24)); // Daily rate
-  const serviceCharge = Math.round(baseAmount * 0.3); // 30% service charge
+  const serviceCharge = Math.round(baseAmount * 0.1); // 10% service charge
   const totalAmount = baseAmount + serviceCharge;
 
   const breakdown = [
     {
       description: `${resourceType === 'operationTheatres' ? 'Operation Theatre' : resourceType.toUpperCase()} (${duration} hours)`,
-      amount: baseAmount
+      amount: baseAmount,
     },
     {
-      description: 'Service Charge (30%)',
-      amount: serviceCharge
-    }
+      description: 'Service Charge (10%)',
+      amount: serviceCharge,
+    },
   ];
 
   return {
     baseAmount,
     serviceCharge,
     totalAmount,
-    breakdown
+    breakdown,
   };
 }
 

@@ -32,7 +32,7 @@ class HospitalPricing {
    * @param {number} serviceChargePercentage - Service charge percentage (default 30%)
    * @returns {object} Pricing record
    */
-  static setPricing(hospitalId, resourceType, basePrice, serviceChargePercentage = 30.00) {
+  static setPricing(hospitalId, resourceType, basePrice, serviceChargePercentage = 10.00) {
     // Validate inputs
     if (!hospitalId || !resourceType || !basePrice) {
       throw new Error('Hospital ID, resource type, and base price are required');
@@ -98,7 +98,7 @@ class HospitalPricing {
       };
       
       const basePrice = defaultPrices[resourceType] || 100.00;
-      const serviceChargePercentage = 30.00;
+      const serviceChargePercentage = 10.00;
       
       return {
         hospital_id: hospitalId,

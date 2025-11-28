@@ -20,7 +20,7 @@ interface RegisterFormData {
   password: string;
   confirmPassword: string;
   phone: string;
-  userType: 'user' | 'hospital-authority';
+  userType: 'user' | 'hospital-authority' | 'admin';
   acceptedTerms: boolean;
   hospital?: {
     name: string;
@@ -466,7 +466,7 @@ export default function RegisterPage() {
                 <Label htmlFor="userType">Account Type</Label>
                 <Select 
                   value={formData.userType} 
-                  onValueChange={(value: 'user' | 'hospital-authority') => 
+                  onValueChange={(value: 'user' | 'hospital-authority' | 'admin') => 
                     handleInputChange('userType', value)
                   }
                 >
@@ -484,6 +484,12 @@ export default function RegisterPage() {
                       <div className="flex items-center gap-2">
                         <Building2 className="w-4 h-4" />
                         <span>Medical Facility Representative</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="admin">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4" />
+                        <span>System Administrator</span>
                       </div>
                     </SelectItem>
                   </SelectContent>

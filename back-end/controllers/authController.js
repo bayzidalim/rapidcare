@@ -15,10 +15,10 @@ exports.register = async (req, res) => {
     }
 
     // Validate userType
-    if (!['user', 'hospital-authority'].includes(userType)) {
+    if (!['user', 'hospital-authority', 'admin'].includes(userType)) {
       return res.status(400).json({
         success: false,
-        error: 'userType must be either "user" or "hospital-authority"'
+        error: 'userType must be either "user", "hospital-authority" or "admin"'
       });
     }
 

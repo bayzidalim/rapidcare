@@ -6,6 +6,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const BookingApprovalService = require('../services/bookingApprovalService');
 const ValidationService = require('../services/validationService');
 const HospitalPricing = require('../models/HospitalPricing');
+const User = require('../models/User');
 
 /**
  * @route   GET /api/bookings/my-bookings
@@ -369,7 +370,7 @@ router.post('/payment', authenticate, async (req, res) => {
     const paymentAmount = amount || totalExpectedAmount;
     
     // Create detailed cost breakdown for transparency
-    const baseServiceChargeRate = 0.3; // 30% service charge on base booking
+    const baseServiceChargeRate = 0.1; // 10% service charge on base booking
     const baseServiceCharge = Math.round(baseBookingAmount * baseServiceChargeRate);
     const hospitalShare = baseBookingAmount - baseServiceCharge;
     
@@ -423,6 +424,33 @@ router.post('/payment', authenticate, async (req, res) => {
       });
     }
     
+    // Deduct balance from user account
+    let balanceUpdateResult;
+    try {
+      // Create a simplified cost breakdown for User.processPayment
+      const simpleCostBreakdown = {
+        hospital_share: hospitalShare,
+        service_charge_share: baseServiceCharge,
+        rapid_assistance_charge: rapidAssistanceCharge
+      };
+      
+      balanceUpdateResult = User.processPayment(
+        req.user.id, 
+        parseFloat(paymentAmount), 
+        bookingId, 
+        transactionId,
+        simpleCostBreakdown
+      );
+      
+      console.log('💰 Balance updated:', balanceUpdateResult);
+    } catch (error) {
+      console.error('Balance update failed:', error);
+      return res.status(400).json({
+        success: false,
+        error: error.message || 'Failed to update user balance'
+      });
+    }
+    
     // Update booking with payment details
     Booking.updatePaymentStatus(bookingId, 'paid', 'bkash', transactionId);
     
@@ -448,7 +476,9 @@ router.post('/payment', authenticate, async (req, res) => {
       paymentMethod: 'bkash',
       transactionId: transactionId,
       gatewayTransactionId: paymentProcessingResult.gatewayTransactionId,
-      paymentData: JSON.stringify(itemizedBreakdown)
+      paymentData: JSON.stringify(itemizedBreakdown),
+      serviceCharge: platformRevenue,
+      hospitalAmount: hospitalShare
     };
     
     console.log('💾 Creating transaction record:', transactionData);
@@ -492,6 +522,8 @@ router.post('/payment', authenticate, async (req, res) => {
       payment_method: 'bkash',
       processed_at: new Date().toISOString(),
       cost_breakdown: itemizedBreakdown,
+      new_balance: balanceUpdateResult.newBalance,
+      previous_balance: balanceUpdateResult.previousBalance,
       rapid_assistance: {
         requested: requestedRapidAssistance,
         charge: rapidAssistanceCharge,

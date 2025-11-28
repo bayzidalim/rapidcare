@@ -60,9 +60,9 @@ export default function HospitalPricingManagement({ hospitalId }: HospitalPricin
           pricingObject[item.resourceType] = {
             resource_type: item.resourceType,
             base_price: item.baseRate,
-            service_charge_percentage: item.serviceChargePercentage || 30,
-            service_charge_amount: item.serviceChargeAmount || (item.baseRate * 30) / 100,
-            total_price: item.totalPrice || item.baseRate + ((item.baseRate * 30) / 100),
+            service_charge_percentage: item.serviceChargePercentage || 10,
+            service_charge_amount: item.serviceChargeAmount || (item.baseRate * 10) / 100,
+            total_price: item.totalPrice || item.baseRate + ((item.baseRate * 10) / 100),
             is_default: item.isDefault || false
           };
         });
@@ -87,7 +87,7 @@ export default function HospitalPricingManagement({ hospitalId }: HospitalPricin
       const response = await pricingAPI.updateHospitalPricing(hospitalId, {
         resourceType,
         baseRate: basePrice,
-        serviceChargePercentage: 30 // Fixed 30% service charge
+        serviceChargePercentage: 10 // Fixed 10% service charge
       });
       
       if (response.data.success) {
@@ -163,7 +163,7 @@ export default function HospitalPricingManagement({ hospitalId }: HospitalPricin
             Resource Pricing Management
           </CardTitle>
           <CardDescription>
-            Set competitive prices for your hospital resources. Service charge (30%) is automatically added.
+            Set competitive prices for your hospital resources. Service charge (10%) is automatically added.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -303,12 +303,12 @@ function PricingCard({
             <span>৳{basePrice}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Service Charge (30%):</span>
-            <span>৳{Math.round((basePrice * 30) / 100)}</span>
+            <span className="text-gray-600">Service Charge (10%):</span>
+            <span>৳{Math.round((basePrice * 10) / 100)}</span>
           </div>
           <div className="flex justify-between font-semibold border-t pt-2">
             <span>Total Price:</span>
-            <span className="text-green-600">৳{basePrice + Math.round((basePrice * 30) / 100)}</span>
+            <span className="text-green-600">৳{basePrice + Math.round((basePrice * 10) / 100)}</span>
           </div>
         </div>
 

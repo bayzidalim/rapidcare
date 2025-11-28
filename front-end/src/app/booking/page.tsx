@@ -138,7 +138,7 @@ function BookingPageContent() {
           const resourceType = p.resourceType === 'bed' ? 'beds' : p.resourceType;
           organizedPricing[resourceType] = {
             baseRate: p.baseRate || p.base_price || 0,
-            serviceChargePercentage: p.serviceChargePercentage || p.service_charge_percentage || 30,
+            serviceChargePercentage: p.serviceChargePercentage || p.service_charge_percentage || 10,
             totalPrice: p.totalPrice || p.total_price || 0
           };
         });
@@ -148,9 +148,9 @@ function BookingPageContent() {
       console.error('Failed to load pricing:', error);
       // Fallback to default pricing if API fails
       setPricing({
-        beds: { baseRate: 600, serviceChargePercentage: 30, totalPrice: 780 },
-        icu: { baseRate: 2500, serviceChargePercentage: 30, totalPrice: 3250 },
-        operationTheatres: { baseRate: 5000, serviceChargePercentage: 30, totalPrice: 6500 }
+        beds: { baseRate: 600, serviceChargePercentage: 10, totalPrice: 660 },
+        icu: { baseRate: 2500, serviceChargePercentage: 10, totalPrice: 2750 },
+        operationTheatres: { baseRate: 5000, serviceChargePercentage: 10, totalPrice: 5500 }
       });
     } finally {
       setLoadingPricing(false);
@@ -159,7 +159,7 @@ function BookingPageContent() {
 
   const calculateAmount = (resourceType: string, duration: number, includeRapidAssistance: boolean) => {
     // Use actual pricing from API if available
-    let dailyRate = 780; // Default fallback (600 base + 30% service charge)
+    let dailyRate = 660; // Default fallback (600 base + 10% service charge)
 
     if (pricing && pricing[resourceType]) {
       // Use totalPrice which already includes service charge
@@ -699,7 +699,7 @@ function BookingPageContent() {
                         const duration = parseInt(formData.estimatedDuration) || 24;
                         const serviceChargePercentage = pricing && pricing[formData.resourceType] 
                           ? pricing[formData.resourceType].serviceChargePercentage 
-                          : 30;
+                          : 10;
                         const baseRate = pricing && pricing[formData.resourceType]
                           ? pricing[formData.resourceType].baseRate
                           : 600;
