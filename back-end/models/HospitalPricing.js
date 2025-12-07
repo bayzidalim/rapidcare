@@ -18,7 +18,10 @@ class HospitalPricing {
       'icu': 'icu',
       'operationTheatres': 'operationTheatres',
       'operationTheaters': 'operationTheatres',
-      'operation_theatres': 'operationTheatres'
+      'operation_theatres': 'operationTheatres',
+      'rapid_collection': 'rapid_collection',
+      'rapidCollection': 'rapid_collection',
+      'rapidService': 'rapid_collection'
     };
     
     return typeMap[resourceType] || resourceType;
@@ -40,7 +43,7 @@ class HospitalPricing {
     
     // Normalize resource type
     const normalizedType = this.normalizeResourceType(resourceType);
-    const validResourceTypes = ['bed', 'icu', 'operationTheatres'];
+    const validResourceTypes = ['bed', 'icu', 'operationTheatres', 'rapid_collection'];
     if (!validResourceTypes.includes(normalizedType)) {
       throw new Error(`Invalid resource type. Must be one of: ${validResourceTypes.join(', ')}`);
     }
@@ -93,8 +96,10 @@ class HospitalPricing {
       // Return default pricing if not set (in Taka - BDT)
       const defaultPrices = {
         'bed': 120.00,
+        'bed': 120.00,
         'icu': 600.00,
-        'operationTheatres': 1200.00
+        'operationTheatres': 1200.00,
+        'rapid_collection': 500.00
       };
       
       const basePrice = defaultPrices[resourceType] || 100.00;
@@ -129,7 +134,7 @@ class HospitalPricing {
    * @returns {array} Array of pricing records
    */
   static getHospitalPricing(hospitalId) {
-    const resourceTypes = ['beds', 'icu', 'operationTheatres'];
+    const resourceTypes = ['beds', 'icu', 'operationTheatres', 'rapid_collection'];
     return resourceTypes.map(resourceType => this.getPricing(hospitalId, resourceType));
   }
   
@@ -215,7 +220,7 @@ class HospitalPricing {
     if (!pricingData.resourceType) {
       errors.push('Resource type is required');
     } else {
-      const validTypes = ['bed', 'icu', 'operationTheatres'];
+      const validTypes = ['bed', 'icu', 'operationTheatres', 'rapid_collection'];
       if (!validTypes.includes(pricingData.resourceType)) {
         errors.push(`Resource type must be one of: ${validTypes.join(', ')}`);
       }

@@ -354,11 +354,12 @@ class SampleCollectionService {
       const query = `
         SELECT DISTINCT 
           h.*,
-          COUNT(hts.id) as available_tests
+          COUNT(hts.id) as available_tests,
+          CASE WHEN shp.id IS NOT NULL THEN 1 ELSE 0 END as has_rapid_pricing
         FROM hospitals h
-        INNER JOIN hospital_test_services hts ON h.id = hts.hospital_id
-        WHERE hts.home_collection_available = 1
-          AND hts.is_available = 1
+        LEFT JOIN hospital_test_services hts ON h.id = hts.hospital_id AND hts.home_collection_available = 1 AND hts.is_available = 1
+        LEFT JOIN simple_hospital_pricing shp ON h.id = shp.hospital_id AND shp.resource_type = 'rapid_collection'
+        WHERE (hts.id IS NOT NULL OR shp.id IS NOT NULL)
         GROUP BY h.id
         ORDER BY h.name
       `;

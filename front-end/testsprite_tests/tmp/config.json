@@ -1,8 +1,0 @@
-{
-  "status": "commited",
-  "type": "frontend",
-  "scope": "codebase",
-  "localEndpoint": "http://localhost:3000",
-  "loginUser": "admin@example.com",
-  "loginPassword": "password123"
-}

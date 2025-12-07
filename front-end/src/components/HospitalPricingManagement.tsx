@@ -16,7 +16,8 @@ import {
   Save, 
   RefreshCw,
   TrendingUp,
-  Calculator
+  Calculator,
+  Ambulance
 } from 'lucide-react';
 import { JSX } from 'react/jsx-runtime';
 
@@ -113,6 +114,7 @@ export default function HospitalPricingManagement({ hospitalId }: HospitalPricin
       case 'bed': return <Bed className="w-5 h-5" />;
       case 'icu': return <Heart className="w-5 h-5" />;
       case 'operationTheatres': return <Scissors className="w-5 h-5" />;
+      case 'rapid_collection': return <Ambulance className="w-5 h-5" />;
       default: return <Bed className="w-5 h-5" />;
     }
   };
@@ -122,6 +124,7 @@ export default function HospitalPricingManagement({ hospitalId }: HospitalPricin
       case 'bed': return 'Hospital Bed';
       case 'icu': return 'ICU';
       case 'operationTheatres': return 'Operation Theatre';
+      case 'rapid_collection': return 'Rapid Collection Service';
       default: return type;
     }
   };
@@ -131,6 +134,7 @@ export default function HospitalPricingManagement({ hospitalId }: HospitalPricin
       case 'bed': return 'bg-blue-100 text-blue-800';
       case 'icu': return 'bg-red-100 text-red-800';
       case 'operationTheatres': return 'bg-green-100 text-green-800';
+      case 'rapid_collection': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };

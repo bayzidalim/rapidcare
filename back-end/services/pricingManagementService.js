@@ -199,7 +199,7 @@ class PricingManagementService {
     const suggestions = [];
 
     // Resource type validation
-    const validResourceTypes = ['beds', 'icu', 'operationTheatres'];
+    const validResourceTypes = ['beds', 'icu', 'operationTheatres', 'rapid_collection'];
     if (!validResourceTypes.includes(pricingData.resourceType)) {
       errors.push(ErrorHandler.createError('pricing', 'INVALID_RATE', {
         reason: 'Invalid resource type'
@@ -260,17 +260,20 @@ class PricingManagementService {
       'Dhaka': {
         'beds': { min: 800, max: 5000 },
         'icu': { min: 3000, max: 15000 },
-        'operationTheatres': { min: 8000, max: 80000 }
+        'operationTheatres': { min: 8000, max: 80000 },
+        'rapid_collection': { min: 300, max: 2000 }
       },
       'Chittagong': {
         'beds': { min: 600, max: 4000 },
         'icu': { min: 2500, max: 12000 },
-        'operationTheatres': { min: 6000, max: 60000 }
+        'operationTheatres': { min: 6000, max: 60000 },
+        'rapid_collection': { min: 250, max: 1500 }
       },
       'Sylhet': {
         'beds': { min: 500, max: 3000 },
         'icu': { min: 2000, max: 10000 },
-        'operationTheatres': { min: 5000, max: 50000 }
+        'operationTheatres': { min: 5000, max: 50000 },
+        'rapid_collection': { min: 200, max: 1200 }
       }
     };
 
@@ -724,7 +727,7 @@ class PricingManagementService {
    */
   static calculatePricingTrends(pricingHistory) {
     const trends = {};
-    const resourceTypes = ['beds', 'icu', 'operationTheatres'];
+    const resourceTypes = ['beds', 'icu', 'operationTheatres', 'rapid_collection'];
 
     resourceTypes.forEach(resourceType => {
       const resourceHistory = pricingHistory.filter(p => p.resourceType === resourceType);

@@ -1040,6 +1040,20 @@ export default function DashboardPage() {
                       <span>Settings</span>
                     </Button>
                   </Link>
+                  <Button 
+                    variant="outline" 
+                    className="w-full h-20 flex-col gap-2 border-dashed border-2 hover:border-solid hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200"
+                    onClick={() => {
+                        const tabsList = document.querySelector('[role="tablist"]');
+                        const pricingTab = tabsList?.querySelector('[value="pricing"]') as HTMLButtonElement | null;
+                        if (pricingTab) pricingTab.click();
+                    }}
+                  >
+                    <div className="bg-blue-100 p-2 rounded-full">
+                        <Plus className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <span>Add Rapid Service</span>
+                  </Button>
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1065,6 +1079,14 @@ export default function DashboardPage() {
                     <Button variant="outline" className="w-full h-20 flex-col gap-2">
                       <Sparkles className="w-6 h-6" />
                       <span>Rapid Analyze</span>
+                    </Button>
+                  </Link>
+                  <Link href="/rapid-collection">
+                    <Button variant="outline" className="w-full h-20 flex-col gap-2">
+                      <div className="bg-blue-100 p-2 rounded-full">
+                        <Clock className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <span>Rapid Collection</span>
                     </Button>
                   </Link>
                 </div>
