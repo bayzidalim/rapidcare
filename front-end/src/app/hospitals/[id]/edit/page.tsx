@@ -44,9 +44,9 @@ const hospitalSchema = z.object({
     country: z.string().min(2, 'Country is required'),
   }),
   contact: z.object({
-    phone: z.string().min(10, 'Valid phone number is required'),
+    phone: z.string().min(2, 'Valid phone number is required'),
     email: z.string().email('Valid email is required'),
-    emergency: z.string().min(10, 'Emergency contact is required'),
+    emergency: z.string().min(2, 'Emergency contact is required'),
   }),
   resources: z.object({
     beds: z.object({

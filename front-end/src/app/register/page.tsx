@@ -176,9 +176,9 @@ export default function RegisterPage() {
       errors.phone = 'Phone number is required';
     } else {
       // Enhanced phone validation
-      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-      if (!phoneRegex.test(formData.phone.replace(/[\s\-\(\)]/g, ''))) {
-        errors.phone = 'Please enter a valid phone number';
+      // Phone validation removed
+      if (formData.phone.length < 3) {
+         errors.phone = 'Phone number is too short';
       }
     }
 
@@ -236,10 +236,7 @@ export default function RegisterPage() {
         if (!hospital.contact.phone.trim()) {
           errors.hospitalPhone = 'Hospital phone number is required';
         } else {
-          const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-          if (!phoneRegex.test(hospital.contact.phone.replace(/[\s\-\(\)]/g, ''))) {
-            errors.hospitalPhone = 'Please enter a valid hospital phone number';
-          }
+          // Phone validation removed
         }
         
         if (!hospital.contact.email.trim()) {
@@ -254,10 +251,7 @@ export default function RegisterPage() {
         if (!hospital.contact.emergency.trim()) {
           errors.hospitalEmergency = 'Hospital emergency contact is required';
         } else {
-          const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-          if (!phoneRegex.test(hospital.contact.emergency.replace(/[\s\-\(\)]/g, ''))) {
-            errors.hospitalEmergency = 'Please enter a valid emergency contact number';
-          }
+          // Phone validation removed
         }
         
         // Services validation

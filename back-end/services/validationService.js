@@ -111,8 +111,7 @@ class ValidationService {
 
   // Validate phone number format (basic)
   static isValidPhone(phone) {
-    const phoneRegex = /^[+]?[1-9][\d]{0,15}$/;
-    return phoneRegex.test(phone.replace(/[\s-()]/g, ''));
+    return true; // Phone validation rules removed
   }
 
   // Sanitize input data

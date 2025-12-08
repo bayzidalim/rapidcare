@@ -94,10 +94,7 @@ export function validateBookingForPayment(
   }
 
   // Validate phone number format
-  const phoneRegex = /^[\d\s\-\+\(\)]+$/;
-  if (bookingData.emergencyContactPhone && !phoneRegex.test(bookingData.emergencyContactPhone)) {
-    errors.push('Emergency contact phone number contains invalid characters');
-  }
+  // Phone validation removed
 
   return {
     isValid: errors.length === 0,
