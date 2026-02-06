@@ -23,7 +23,7 @@ exports.getUserNotifications = async (req, res) => {
 // Get unread notification count
 exports.getUnreadCount = async (req, res) => {
     try {
-        const count = NotificationService.getUnreadCount(req.user.id);
+        const count = await NotificationService.getUnreadCount(req.user.id);
 
         res.json({
             success: true,
