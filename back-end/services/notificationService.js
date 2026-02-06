@@ -1,100 +1,71 @@
-const db = require('../config/database');
+const Notification = require('../models/Notification');
+const Hospital = require('../models/Hospital');
 
 class NotificationService {
   // Create notification
-  static create(notificationData) {
-    const stmt = db.prepare(`
-      INSERT INTO notifications (
-        userId, type, title, message, data, isRead, createdAt
-      ) VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
-    `);
+  static async create(notificationData) {
+    const notification = await Notification.create({
+      userId: notificationData.userId,
+      type: notificationData.type,
+      title: notificationData.title,
+      message: notificationData.message,
+      data: notificationData.data || {},
+      isRead: false
+    });
 
-    const result = stmt.run(
-      notificationData.userId,
-      notificationData.type,
-      notificationData.title,
-      notificationData.message,
-      JSON.stringify(notificationData.data || {}),
-    );
-
-    return this.getById(result.lastInsertRowid);
+    return this.getById(notification._id);
   }
 
   // Get notification by ID
-  static getById(id) {
-    const notification = db.prepare(`
-      SELECT * FROM notifications WHERE id = ?
-    `).get(id);
-
+  static async getById(id) {
+    const notification = await Notification.findById(id);
     if (!notification) return null;
 
-    return {
-      ...notification,
-      data: notification.data ? JSON.parse(notification.data) : {},
-      isRead: Boolean(notification.isRead)
-    };
+    return notification.toObject();
   }
 
   // Get notifications for user
-  static getByUserId(userId, limit = 50) {
-    const notifications = db.prepare(`
-      SELECT * FROM notifications 
-      WHERE userId = ? 
-      ORDER BY createdAt DESC 
-      LIMIT ?
-    `).all(userId, limit);
+  static async getByUserId(userId, limit = 50) {
+    const notifications = await Notification.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(limit);
 
-    return notifications.map(notification => ({
-      ...notification,
-      data: notification.data ? JSON.parse(notification.data) : {},
-      isRead: Boolean(notification.isRead)
-    }));
+    return notifications.map(n => n.toObject());
   }
 
   // Mark notification as read
-  static markAsRead(id) {
-    const stmt = db.prepare(`
-      UPDATE notifications 
-      SET isRead = 1, updatedAt = CURRENT_TIMESTAMP 
-      WHERE id = ?
-    `);
-    
-    stmt.run(id);
-    return this.getById(id);
+  static async markAsRead(id) {
+    const notification = await Notification.findByIdAndUpdate(
+      id,
+      { isRead: true },
+      { new: true }
+    );
+    return notification ? notification.toObject() : null;
   }
 
   // Mark all notifications as read for user
-  static markAllAsRead(userId) {
-    const stmt = db.prepare(`
-      UPDATE notifications 
-      SET isRead = 1, updatedAt = CURRENT_TIMESTAMP 
-      WHERE userId = ? AND isRead = 0
-    `);
-    
-    const result = stmt.run(userId);
-    return result.changes;
+  static async markAllAsRead(userId) {
+    const result = await Notification.updateMany(
+      { userId, isRead: false },
+      { isRead: true }
+    );
+    return result.modifiedCount;
   }
 
   // Get unread count for user
-  static getUnreadCount(userId) {
-    const result = db.prepare(`
-      SELECT COUNT(*) as count FROM notifications 
-      WHERE userId = ? AND isRead = 0
-    `).get(userId);
-
-    return result.count;
+  static async getUnreadCount(userId) {
+    return Notification.countDocuments({ userId, isRead: false });
   }
 
   // Delete notification
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM notifications WHERE id = ?');
-    const result = stmt.run(id);
-    return result.changes > 0;
+  static async delete(id) {
+    const result = await Notification.findByIdAndDelete(id);
+    return !!result;
   }
 
   // Hospital approval notification helpers
-  static notifyHospitalApproved(hospitalId, authorityUserId) {
-    const hospital = db.prepare('SELECT name FROM hospitals WHERE id = ?').get(hospitalId);
+  static async notifyHospitalApproved(hospitalId, authorityUserId) {
+    const hospital = await Hospital.findById(hospitalId);
     
     return this.create({
       userId: authorityUserId,
@@ -105,8 +76,8 @@ class NotificationService {
     });
   }
 
-  static notifyHospitalRejected(hospitalId, authorityUserId, reason) {
-    const hospital = db.prepare('SELECT name FROM hospitals WHERE id = ?').get(hospitalId);
+  static async notifyHospitalRejected(hospitalId, authorityUserId, reason) {
+    const hospital = await Hospital.findById(hospitalId);
     
     return this.create({
       userId: authorityUserId,
@@ -117,19 +88,19 @@ class NotificationService {
     });
   }
 
-  static notifyHospitalResubmitted(hospitalId, adminUserIds) {
-    const hospital = db.prepare('SELECT name FROM hospitals WHERE id = ?').get(hospitalId);
+  static async notifyHospitalResubmitted(hospitalId, adminUserIds) {
+    const hospital = await Hospital.findById(hospitalId);
     
     // Notify all admin users
-    adminUserIds.forEach(adminId => {
-      this.create({
+    await Promise.all(adminUserIds.map(adminId => {
+      return this.create({
         userId: adminId,
         type: 'hospital_resubmitted',
         title: 'Hospital Resubmitted for Review',
         message: `Hospital "${hospital.name}" has been resubmitted for approval review.`,
         data: { hospitalId, hospitalName: hospital.name }
       });
-    });
+    }));
   }
 
   // Booking notification helpers
