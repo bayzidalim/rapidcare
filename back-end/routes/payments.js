@@ -200,7 +200,7 @@ router.get('/history/:userId', authenticate, async (req, res) => {
     }
 
     // Get payment history
-    const paymentHistory = PaymentProcessingService.getPaymentHistory(userId, limit);
+    const paymentHistory = await PaymentProcessingService.getPaymentHistory(userId, limit);
 
     res.status(200).json({
       success: true,
@@ -227,7 +227,7 @@ router.get('/history', authenticate, async (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
 
     // Get payment history for current user
-    const paymentHistory = PaymentProcessingService.getPaymentHistory(req.user.id, limit);
+    const paymentHistory = await PaymentProcessingService.getPaymentHistory(req.user.id, limit);
 
     res.status(200).json({
       success: true,

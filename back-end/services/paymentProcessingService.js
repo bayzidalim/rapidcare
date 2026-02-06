@@ -5,7 +5,7 @@ const ValidationService = require('./validationService');
 const NotificationService = require('./notificationService');
 const ErrorHandler = require('../utils/errorHandler');
 const { formatTaka, parseTaka, isValidTakaAmount, roundTaka } = require('../utils/currencyUtils');
-const db = require('../config/database');
+// const db = require('../config/database'); // DB legacy import removed
 
 // Security imports
 const securityUtils = require('../utils/securityUtils');
@@ -586,6 +586,9 @@ class PaymentProcessingService {
   /**
    * Send bKash-style confirmation notification
    */
+  /**
+   * Send bKash-style confirmation notification
+   */
   static async sendBkashConfirmationNotification(transactionId, userId, booking, paymentResult) {
     try {
       await NotificationService.sendBkashPaymentConfirmationNotification(
@@ -898,8 +901,20 @@ class PaymentProcessingService {
   /**
    * Get payment history for user
    */
-  static getPaymentHistory(userId, limit = 50) {
-    return Transaction.findByUserId(userId).slice(0, limit);
+  /**
+   * Get payment history for user
+   */
+  static async getPaymentHistory(userId, limit = 50) {
+    const transactions = await Transaction.findByUserId(userId).limit(limit);
+    
+    // Format if needed
+    return transactions.map(t => {
+      const trans = t.toObject ? t.toObject() : t;
+      return {
+        ...trans,
+        paymentData: trans.paymentData || {}
+      };
+    });
   }
 
   /**
