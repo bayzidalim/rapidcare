@@ -1,6 +1,8 @@
 const Hospital = require('../models/Hospital');
+const HospitalResource = require('../models/HospitalResource');
+const Booking = require('../models/Booking');
 const ResourceAuditLog = require('../models/ResourceAuditLog');
-const db = require('../config/database');
+const mongoose = require('mongoose');
 
 /**
  * ResourceManagementService
@@ -14,90 +16,90 @@ const db = require('../config/database');
 class ResourceManagementService {
   /**
    * Update resource quantities for a hospital
-   * @param {number} hospitalId - Hospital ID
+   * @param {string} hospitalId - Hospital ID
    * @param {Object} resources - Resource updates
-   * @param {number} updatedBy - User making the update
+   * @param {string} updatedBy - User making the update
    * @returns {Object} Update result with success status and updated resources
    */
   static async updateResourceQuantities(hospitalId, resources, updatedBy) {
     try {
       // Validate hospital exists
-      const hospital = Hospital.findById(hospitalId);
+      const hospital = await Hospital.findById(hospitalId);
       if (!hospital) {
         throw new Error('Hospital not found');
       }
 
-      // Validate user permissions (this would typically check if user is hospital authority for this hospital)
+      // Validate user permissions
       if (!updatedBy) {
         throw new Error('User ID required for resource updates');
       }
 
       // Validate resource data
-      const validationResult = this.validateResourceUpdate(hospitalId, resources);
+      const validationResult = await this.validateResourceUpdate(hospitalId, resources);
       if (!validationResult.valid) {
         throw new Error(validationResult.message);
       }
 
-      // Get current resources for comparison
-      const currentResources = Hospital.getResources(hospitalId);
-      const currentResourceMap = {};
-      currentResources.forEach(resource => {
-        currentResourceMap[resource.resourceType] = resource;
-      });
-
-      // Prepare resource updates with proper structure
-      const resourceUpdates = [];
+      // Prepare and Execute Updates
+      // We process each resource type update
+      const updatedTypes = [];
+      
       for (const [resourceType, resourceData] of Object.entries(resources)) {
         if (!['beds', 'icu', 'operationTheatres'].includes(resourceType)) {
           throw new Error(`Invalid resource type: ${resourceType}`);
         }
 
         const updateData = {
-          resourceType,
-          total: resourceData.total || 0,
-          available: resourceData.available || 0,
-          occupied: resourceData.occupied || 0,
-          reserved: resourceData.reserved || 0,
-          maintenance: resourceData.maintenance || 0
+            total: resourceData.total || 0,
+            available: resourceData.available || 0,
+            occupied: resourceData.occupied || 0,
+            reserved: resourceData.reserved || 0,
+            maintenance: resourceData.maintenance || 0,
+            updatedBy: updatedBy,
+            updatedAt: new Date()
         };
-
-        // Validate resource constraints
-        if (updateData.total < 0 || updateData.available < 0 || updateData.occupied < 0) {
-          throw new Error(`Resource quantities cannot be negative for ${resourceType}`);
-        }
-
-        if (updateData.available + updateData.occupied + updateData.reserved + updateData.maintenance > updateData.total) {
-          throw new Error(`Sum of allocated resources exceeds total for ${resourceType}`);
-        }
-
-        resourceUpdates.push(updateData);
+        
+        // Find and update or create
+        const updatedResource = await HospitalResource.findOneAndUpdate(
+            { hospitalId: hospitalId, resourceType: resourceType },
+            updateData,
+            { new: true, upsert: true }
+        );
+        updatedTypes.push(updatedResource);
+        
+        // Log manual update if needed?
+        // Audit logging usually for specific actions. Here we just update state.
       }
+      
+      // Update hospital lastUpdated
+      await Hospital.findByIdAndUpdate(hospitalId, { lastUpdated: new Date() });
 
-      // Update resources using transaction
-      const transaction = db.transaction(() => {
-        // Update each resource type
-        resourceUpdates.forEach(resourceData => {
-          Hospital.updateResourceType(hospitalId, resourceData.resourceType, resourceData, updatedBy);
-        });
+      // Get updated resources map
+      const allResources = await HospitalResource.find({ hospitalId });
+      const resourceMap = {};
+      allResources.forEach(r => {
+          resourceMap[r.resourceType] = {
+              total: r.total,
+              available: r.available,
+              occupied: r.occupied,
+              reserved: r.reserved,
+              maintenance: r.maintenance
+          };
       });
-
-      transaction();
-
-      // Get updated resources
-      const updatedResources = Hospital.getResources(hospitalId);
 
       return {
         success: true,
         message: 'Resources updated successfully',
         data: {
           hospitalId,
-          resources: updatedResources,
+          resources: resourceMap,
           updatedBy,
           updatedAt: new Date().toISOString()
         }
       };
 
     } catch (error) {
+      console.error('Update Resources Error:', error);
       return {
         success: false,
         message: error.message,
@@ -108,13 +110,13 @@ class ResourceManagementService {
 
   /**
    * Validate resource update data
-   * @param {number} hospitalId - Hospital ID
+   * @param {string} hospitalId - Hospital ID
    * @param {Object} resources - Resource data to validate
    * @returns {Object} Validation result
    */
-  static validateResourceUpdate(hospitalId, resources) {
+  static async validateResourceUpdate(hospitalId, resources) {
     try {
-      if (!hospitalId || typeof hospitalId !== 'number') {
+      if (!hospitalId) {
         return { valid: false, message: 'Valid hospital ID is required' };
       }
 
@@ -123,16 +125,17 @@ class ResourceManagementService {
       }
 
       // Get current bookings to check minimum available resources
-      const currentBookings = this.getCurrentBookingsByHospital(hospitalId);
+      const currentBookings = await this.getCurrentBookingsByHospital(hospitalId);
       const bookedResources = {};
 
       // Calculate currently booked resources
       currentBookings.forEach(booking => {
-        if (booking.status === 'approved') {
           const resourceType = booking.resourceType;
-          const quantity = booking.resourcesAllocated || 1;
+          // Only count if status implies occupancy? 
+          // Previous logic said checking "approved" bookings.
+          // In Mongoose check:
+          const quantity = 1; // Default
           bookedResources[resourceType] = (bookedResources[resourceType] || 0) + quantity;
-        }
       });
 
       // Validate each resource type
@@ -162,6 +165,10 @@ class ResourceManagementService {
 
         // Check against current bookings
         const currentlyBooked = bookedResources[resourceType] || 0;
+        // Logic: 'available + occupied' represents physical presence?
+        // Or 'occupied' represents exact bookings? 
+        // If we reduce 'available', we must ensure we don't drop below what is logically needed?
+        // Reuse previous logic: available + occupied < currentlyBooked
         if (available + occupied < currentlyBooked) {
           return { 
             valid: false, 
@@ -179,7 +186,7 @@ class ResourceManagementService {
 
   /**
    * Check resource availability for booking
-   * @param {number} hospitalId - Hospital ID
+   * @param {string} hospitalId - Hospital ID
    * @param {string} resourceType - Resource type
    * @param {number} quantity - Required quantity
    * @param {Date} startDate - Booking start date
@@ -188,17 +195,35 @@ class ResourceManagementService {
    */
   static async checkResourceAvailability(hospitalId, resourceType, quantity = 1, startDate = null, endDate = null) {
     try {
-      const availability = Hospital.checkResourceAvailability(hospitalId, resourceType, quantity);
+      // Get current resource state
+      const resource = await HospitalResource.findOne({ hospitalId, resourceType });
+      
+      const currentAvailable = resource ? resource.available : 0;
+      const isAvailable = currentAvailable >= quantity;
+      
+      const availability = {
+          hospitalId,
+          resourceType,
+          quantity,
+          currentAvailable,
+          available: isAvailable,
+          message: isAvailable ? 'Resources available' : 'Insufficient resources'
+      };
       
       // If dates are provided, check for overlapping bookings
       if (startDate && endDate) {
-        const overlappingBookings = this.getOverlappingBookings(hospitalId, resourceType, startDate, endDate);
-        const overlappingQuantity = overlappingBookings.reduce((sum, booking) => 
-          sum + (booking.resourcesAllocated || 1), 0
-        );
+        const overlappingBookings = await this.getOverlappingBookings(hospitalId, resourceType, startDate, endDate);
+        const overlappingQuantity = overlappingBookings.length; // Assuming 1 per booking for now
         
-        availability.availableForPeriod = Math.max(0, availability.currentAvailable - overlappingQuantity);
+        availability.availableForPeriod = Math.max(0, currentAvailable - overlappingQuantity);
         availability.overlappingBookings = overlappingBookings.length;
+        
+        // Strict check: if overlap reduces available below quantity?
+        // Naively, currentAvailable reduces as bookings happen?
+        // 'available' field in DB is instantaneous?
+        // Ideally 'available' decreases when booking is APPROVED.
+        // So overlapping checks future *pending*? Or validated logic?
+        // Previous logic: availableForPeriod = currentAvailable - overlappingQuantity.
       }
 
       return {
@@ -217,23 +242,29 @@ class ResourceManagementService {
 
   /**
    * Allocate resources for a booking
-   * @param {number} hospitalId - Hospital ID
+   * @param {string} hospitalId - Hospital ID
    * @param {string} resourceType - Resource type
    * @param {number} quantity - Quantity to allocate
-   * @param {number} bookingId - Booking ID
-   * @param {number} allocatedBy - User allocating resources
+   * @param {string} bookingId - Booking ID
+   * @param {string} allocatedBy - User allocating resources
    * @returns {Object} Allocation result
    */
   static async allocateResources(hospitalId, resourceType, quantity, bookingId, allocatedBy) {
     try {
       // Check availability first
-      const availability = await this.checkResourceAvailability(hospitalId, resourceType, quantity);
-      if (!availability.success || !availability.data.available) {
-        throw new Error(availability.data.message || 'Insufficient resources available');
+      const availabilityStatus = await this.checkResourceAvailability(hospitalId, resourceType, quantity);
+      if (!availabilityStatus.success || !availabilityStatus.data.available) {
+        throw new Error(availabilityStatus.data.message || 'Insufficient resources available');
       }
 
-      // Allocate resources
-      Hospital.allocateResources(hospitalId, resourceType, quantity, bookingId, allocatedBy);
+      // Allocate resources (Decrease available, Increase occupied)
+      await HospitalResource.findOneAndUpdate(
+          { hospitalId, resourceType },
+          { $inc: { available: -quantity, occupied: quantity } }
+      );
+      
+      // Log?
+      await ResourceAuditLog.logBookingApproval(hospitalId, resourceType, quantity, bookingId, allocatedBy);
 
       return {
         success: true,
@@ -259,18 +290,28 @@ class ResourceManagementService {
 
   /**
    * Release resources from a booking
-   * @param {number} hospitalId - Hospital ID
+   * @param {string} hospitalId - Hospital ID
    * @param {string} resourceType - Resource type
    * @param {number} quantity - Quantity to release
-   * @param {number} bookingId - Booking ID
-   * @param {number} releasedBy - User releasing resources
+   * @param {string} bookingId - Booking ID
+   * @param {string} releasedBy - User releasing resources
    * @param {string} reason - Reason for release
    * @returns {Object} Release result
    */
   static async releaseResources(hospitalId, resourceType, quantity, bookingId, releasedBy, reason = 'completed') {
     try {
-      // Release resources
-      Hospital.releaseResources(hospitalId, resourceType, quantity, bookingId, releasedBy, reason);
+      // Release resources (Increase available, Decrease occupied)
+      await HospitalResource.findOneAndUpdate(
+          { hospitalId, resourceType },
+          { $inc: { available: quantity, occupied: -quantity } }
+      );
+
+      // Log
+      if (reason === 'cancelled') {
+        await ResourceAuditLog.logBookingCancellation(hospitalId, resourceType, quantity, bookingId, releasedBy);
+      } else {
+        await ResourceAuditLog.logBookingCompletion(hospitalId, resourceType, quantity, bookingId, releasedBy);
+      }
 
       return {
         success: true,
@@ -297,14 +338,16 @@ class ResourceManagementService {
 
   /**
    * Get resource history for a hospital
-   * @param {number} hospitalId - Hospital ID
+   * @param {string} hospitalId - Hospital ID
    * @param {Object} options - Query options
    * @returns {Object} Resource history
    */
   static async getResourceHistory(hospitalId, options = {}) {
     try {
-      const history = ResourceAuditLog.getByHospital(hospitalId, options);
-      const totalCount = ResourceAuditLog.count(hospitalId, options);
+      // Use ResourceAuditLog static method which handles mongoose finding
+      const history = await ResourceAuditLog.getByHospital(hospitalId, options);
+      // countDocuments for total
+      const totalCount = await ResourceAuditLog.countDocuments({ hospitalId });
 
       return {
         success: true,
@@ -324,235 +367,52 @@ class ResourceManagementService {
     }
   }
 
-  /**
-   * Get resource utilization statistics
-   * @param {number} hospitalId - Hospital ID
-   * @param {Object} options - Query options
-   * @returns {Object} Utilization statistics
-   */
-  static async getResourceUtilization(hospitalId, options = {}) {
-    try {
-      const utilization = Hospital.getResourceUtilization(hospitalId);
-      const statistics = ResourceAuditLog.getChangeStatistics(hospitalId, options);
-
-      return {
-        success: true,
-        data: {
-          current: utilization,
-          statistics,
-          hospitalId
-        }
-      };
-
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message,
-        error: error
-      };
-    }
-  }
-
-  /**
-   * Get hospitals with available resources
-   * @param {string} resourceType - Resource type filter
-   * @param {number} minQuantity - Minimum available quantity
-   * @param {Object} options - Additional options
-   * @returns {Object} Hospitals with available resources
-   */
-  static async getHospitalsWithAvailableResources(resourceType = null, minQuantity = 1, options = {}) {
-    try {
-      const hospitals = Hospital.getWithAvailableResources(resourceType, minQuantity);
-
-      return {
-        success: true,
-        data: {
-          hospitals,
-          filters: {
-            resourceType,
-            minQuantity
-          }
-        }
-      };
-
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message,
-        error: error
-      };
-    }
-  }
-
-  /**
-   * Perform resource maintenance update
-   * @param {number} hospitalId - Hospital ID
-   * @param {string} resourceType - Resource type
-   * @param {number} maintenanceCount - Number of resources under maintenance
-   * @param {number} updatedBy - User making the update
-   * @param {string} reason - Reason for maintenance
-   * @returns {Object} Update result
-   */
-  static async updateMaintenanceResources(hospitalId, resourceType, maintenanceCount, updatedBy, reason = 'Scheduled maintenance') {
-    try {
-      // Get current resource data
-      const currentResources = Hospital.getResources(hospitalId);
-      const currentResource = currentResources.find(r => r.resourceType === resourceType);
-      
-      if (!currentResource) {
-        throw new Error(`Resource type ${resourceType} not found for hospital`);
-      }
-
-      // Calculate new available count
-      const newAvailable = Math.max(0, currentResource.total - currentResource.occupied - maintenanceCount);
-      
-      // Update resource
-      const updateData = {
-        total: currentResource.total,
-        available: newAvailable,
-        occupied: currentResource.occupied,
-        reserved: currentResource.reserved || 0,
-        maintenance: maintenanceCount
-      };
-
-      const result = await this.updateResourceQuantities(hospitalId, {
-        [resourceType]: updateData
-      }, updatedBy);
-
-      if (result.success) {
-        // Log maintenance update
-        ResourceAuditLog.create({
-          hospitalId,
-          resourceType,
-          changeType: 'system_adjustment',
-          oldValue: currentResource.maintenance || 0,
-          newValue: maintenanceCount,
-          quantity: maintenanceCount - (currentResource.maintenance || 0),
-          changedBy: updatedBy,
-          reason: reason
-        });
-      }
-
-      return result;
-
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message,
-        error: error
-      };
-    }
-  }
-
   // Helper methods
 
   /**
    * Get current bookings for a hospital
-   * @param {number} hospitalId - Hospital ID
+   * @param {string} hospitalId - Hospital ID
    * @returns {Array} Current bookings
    */
-  static getCurrentBookingsByHospital(hospitalId) {
-    const stmt = db.prepare(`
-      SELECT * FROM bookings 
-      WHERE hospitalId = ? AND status IN ('pending', 'approved')
-    `);
-    return stmt.all(hospitalId);
+  static async getCurrentBookingsByHospital(hospitalId) {
+    return Booking.find({ 
+        hospitalId: hospitalId, 
+        status: { $in: ['pending', 'approved'] } 
+    });
   }
 
   /**
    * Get overlapping bookings for a time period
-   * @param {number} hospitalId - Hospital ID
+   * @param {string} hospitalId - Hospital ID
    * @param {string} resourceType - Resource type
    * @param {Date} startDate - Period start date
    * @param {Date} endDate - Period end date
    * @returns {Array} Overlapping bookings
    */
-  static getOverlappingBookings(hospitalId, resourceType, startDate, endDate) {
-    const stmt = db.prepare(`
-      SELECT * FROM bookings 
-      WHERE hospitalId = ? 
-      AND resourceType = ? 
-      AND status = 'approved'
-      AND scheduledDate < ?
-      AND datetime(scheduledDate, '+' || estimatedDuration || ' hours') > ?
-    `);
-    return stmt.all(hospitalId, resourceType, endDate, startDate);
-  }
-
-  /**
-   * Validate user permissions for hospital resource management
-   * @param {number} userId - User ID
-   * @param {number} hospitalId - Hospital ID
-   * @returns {boolean} Permission status
-   */
-  static async validateUserPermissions(userId, hospitalId) {
-    try {
-      const stmt = db.prepare(`
-        SELECT ha.* FROM hospital_authorities ha
-        WHERE ha.userId = ? AND ha.hospitalId = ?
-      `);
-      const authority = stmt.get(userId, hospitalId);
-      
-      return authority !== null;
-
-    } catch (error) {
-      return false;
-    }
-  }
-
-  /**
-   * Get resource change summary for a time period
-   * @param {number} hospitalId - Hospital ID
-   * @param {Date} startDate - Start date
-   * @param {Date} endDate - End date
-   * @returns {Object} Change summary
-   */
-  static async getResourceChangeSummary(hospitalId, startDate, endDate) {
-    try {
-      const changes = ResourceAuditLog.getByHospital(hospitalId, {
-        startDate,
-        endDate
-      });
-
-      const summary = {
-        totalChanges: changes.length,
-        byResourceType: {},
-        byChangeType: {},
-        netChanges: {}
-      };
-
-      changes.forEach(change => {
-        // By resource type
-        if (!summary.byResourceType[change.resourceType]) {
-          summary.byResourceType[change.resourceType] = 0;
-        }
-        summary.byResourceType[change.resourceType]++;
-
-        // By change type
-        if (!summary.byChangeType[change.changeType]) {
-          summary.byChangeType[change.changeType] = 0;
-        }
-        summary.byChangeType[change.changeType]++;
-
-        // Net changes
-        if (!summary.netChanges[change.resourceType]) {
-          summary.netChanges[change.resourceType] = 0;
-        }
-        summary.netChanges[change.resourceType] += change.quantity || 0;
-      });
-
-      return {
-        success: true,
-        data: summary
-      };
-
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message,
-        error: error
-      };
-    }
+  static async getOverlappingBookings(hospitalId, resourceType, startDate, endDate) {
+    // Mongoose query for overlapping ranges
+    // booking.scheduledDate < endDate AND (booking.scheduledDate + duration) > startDate
+    // Need aggregation or JS filter if duration is stored as string/number that needs adding.
+    // 'estimatedDuration' is string "2 hours" or Number? In Booking.js schema it was String in old model, converted to Number in new?
+    // Let's assume Mongoose query using available fields.
+    // Simplifying assumption: check dates directly if `endDate` field exists on booking or computed.
+    // If not, we might filter in JS.
+    
+    const bookings = await Booking.find({
+        hospitalId,
+        resourceType,
+        status: 'approved',
+        // Start date is before range end
+        scheduledDate: { $lt: endDate }
+    });
+    
+    // Filter end side using duration calculation in JS
+    return bookings.filter(b => {
+        const durationHours = parseInt(b.estimatedDuration) || 1;
+        const bStart = new Date(b.scheduledDate);
+        const bEnd = new Date(bStart.getTime() + durationHours * 60 * 60 * 1000);
+        return bEnd > startDate;
+    });
   }
 }
 

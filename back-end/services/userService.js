@@ -1,4 +1,4 @@
-const db = require('../config/database');
+const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
@@ -9,8 +9,9 @@ class UserService {
     const { email, password, name, phone, userType } = userData;
 
     // Check if user already exists
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
+      // In synchronous world this threw error.
       throw new Error('User with this email already exists');
     }
 
@@ -18,44 +19,44 @@ class UserService {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Insert user with default balance of 10,000 BDT
-    const stmt = db.prepare(`
-      INSERT INTO users (email, password, name, phone, userType, balance)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
+    // Create user
+    // Permissions and role logic for hospital authority
+    let permissions = [];
+    let hospitalRole = undefined;
 
-    const result = stmt.run(email, hashedPassword, name, phone, userType, 10000.00);
-    const userId = result.lastInsertRowid;
-
-    // If hospital authority, create hospital authority record
     if (userType === 'hospital-authority') {
-      const authorityStmt = db.prepare(`
-        INSERT INTO hospital_authorities (userId, role, permissions)
-        VALUES (?, ?, ?)
-      `);
-      authorityStmt.run(userId, 'staff', JSON.stringify(['view_hospital', 'update_resources']));
+      hospitalRole = 'staff';
+      permissions = ['view_hospital', 'update_resources'];
     }
 
-    return this.getById(userId);
+    const user = await User.create({
+      email,
+      password: hashedPassword,
+      name,
+      phone,
+      userType,
+      balance: 10000.00,
+      hospitalRole,
+      permissions
+    });
+
+    return this.getById(user._id);
   }
 
   // Login user
   static async login(email, password) {
-    const user = db.prepare(`
-      SELECT u.*, ha.role, ha.hospitalId, ha.permissions
-      FROM users u
-      LEFT JOIN hospital_authorities ha ON u.id = ha.userId
-      WHERE u.email = ? AND u.isActive = 1
-      ORDER BY ha.hospitalId DESC NULLS LAST
-      LIMIT 1
-    `).get(email);
+    const user = await User.findOne({ email, isActive: true });
 
     if (!user) {
       throw new Error('Invalid email or password');
     }
 
     // Check password
+    // Use the method on the model instance (if available, which it is)
+    // Or direct bcrypt compare
     const isValidPassword = await bcrypt.compare(password, user.password);
+    // OR const isValidPassword = await user.matchPassword(password);
+    
     if (!isValidPassword) {
       throw new Error('Invalid email or password');
     }
@@ -63,85 +64,70 @@ class UserService {
     // Generate JWT token
     const token = jwt.sign(
       {
-        userId: user.id,
+        userId: user._id,
         email: user.email,
         userType: user.userType,
-        role: user.role,
-        hospitalId: user.hospitalId || user.hospital_id
+        role: user.hospitalRole, // Mapped from role
+        hospitalId: user.hospital_id
       },
       config.jwtSecret,
       { expiresIn: config.jwtExpiresIn }
     );
 
     // Remove password from response
-    const { password: _, ...userWithoutPassword } = user;
+    const userObj = user.toObject();
+    delete userObj.password;
     
     return {
-      user: userWithoutPassword,
+      user: userObj,
       token
     };
   }
 
   // Get user by ID
-  static getById(id) {
-    const user = db.prepare(`
-      SELECT u.*, ha.role, ha.hospitalId as authHospitalId, ha.permissions
-      FROM users u
-      LEFT JOIN hospital_authorities ha ON u.id = ha.userId
-      WHERE u.id = ? AND u.isActive = 1
-      ORDER BY ha.hospitalId DESC NULLS LAST
-      LIMIT 1
-    `).get(id);
+  static async getById(id) {
+    const user = await User.findOne({ _id: id, isActive: true });
 
     if (!user) return null;
 
-    // Remove password from response
-    const { password, ...userWithoutPassword } = user;
-    
-    // For hospital authorities, use hospitalId from hospital_authorities table if available,
-    // otherwise fall back to hospital_id from users table
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    // Backward compatibility for hospitalId alias
     if (user.userType === 'hospital-authority') {
-      userWithoutPassword.hospitalId = user.authHospitalId || user.hospital_id;
+      userObj.hospitalId = userObj.hospital_id;
     }
     
-    return userWithoutPassword;
+    return userObj;
   }
 
   // Get user by email
-  static getByEmail(email) {
-    const user = db.prepare(`
-      SELECT u.*, ha.role, ha.hospitalId, ha.permissions
-      FROM users u
-      LEFT JOIN hospital_authorities ha ON u.id = ha.userId
-      WHERE u.email = ? AND u.isActive = 1
-      ORDER BY ha.hospitalId DESC NULLS LAST
-      LIMIT 1
-    `).get(email);
+  static async getByEmail(email) {
+    const user = await User.findOne({ email, isActive: true });
 
     if (!user) return null;
 
-    // Remove password from response
-    const { password, ...userWithoutPassword } = user;
-    return userWithoutPassword;
+    const userObj = user.toObject();
+    delete userObj.password;
+    return userObj;
   }
 
   // Update user profile
-  static updateProfile(id, updateData) {
+  static async updateProfile(id, updateData) {
     const { name, phone } = updateData;
     
-    const stmt = db.prepare(`
-      UPDATE users 
-      SET name = ?, phone = ?, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
+    await User.findByIdAndUpdate(id, { 
+      name, 
+      phone, 
+      updatedAt: new Date() 
+    });
     
-    stmt.run(name, phone, id);
     return this.getById(id);
   }
 
   // Change password
   static async changePassword(id, currentPassword, newPassword) {
-    const user = db.prepare('SELECT password FROM users WHERE id = ?').get(id);
+    const user = await User.findById(id);
     if (!user) {
       throw new Error('User not found');
     }
@@ -157,39 +143,22 @@ class UserService {
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
     // Update password
-    const stmt = db.prepare(`
-      UPDATE users 
-      SET password = ?, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
+    user.password = hashedPassword;
+    await user.save();
     
-    stmt.run(hashedPassword, id);
     return { message: 'Password updated successfully' };
   }
 
   // Assign hospital to hospital authority
-  static assignHospital(userId, hospitalId, role = 'staff') {
+  static async assignHospital(userId, hospitalId, role = 'staff') {
     const permissions = this.getPermissionsForRole(role);
     
-    // Check if hospital authority record exists
-    const existing = db.prepare('SELECT id FROM hospital_authorities WHERE userId = ?').get(userId);
-    
-    if (existing) {
-      // Update existing record
-      const stmt = db.prepare(`
-        UPDATE hospital_authorities 
-        SET hospitalId = ?, role = ?, permissions = ?, updatedAt = CURRENT_TIMESTAMP
-        WHERE userId = ?
-      `);
-      stmt.run(hospitalId, role, JSON.stringify(permissions), userId);
-    } else {
-      // Insert new record
-      const stmt = db.prepare(`
-        INSERT INTO hospital_authorities (userId, hospitalId, role, permissions, updatedAt)
-        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-      `);
-      stmt.run(userId, hospitalId, role, JSON.stringify(permissions));
-    }
+    await User.findByIdAndUpdate(userId, {
+        hospital_id: hospitalId,
+        hospitalRole: role,
+        permissions: permissions,
+        updatedAt: new Date()
+    });
     
     return this.getById(userId);
   }
@@ -226,51 +195,46 @@ class UserService {
   static hasPermission(user, permission) {
     if (!user || !user.permissions) return false;
     
-    const permissions = JSON.parse(user.permissions);
-    return permissions.includes(permission);
+    // In Mongoose permissions is Array of Strings
+    return user.permissions.includes(permission);
   }
 
   // Get all users (admin only)
-  static getAll() {
-    const users = db.prepare(`
-      SELECT u.*, ha.role, ha.hospitalId, ha.permissions
-      FROM users u
-      LEFT JOIN hospital_authorities ha ON u.id = ha.userId
-      WHERE u.isActive = 1
-      ORDER BY u.createdAt DESC
-    `).all();
+  static async getAll() {
+    const users = await User.find({ isActive: true }).sort({ createdAt: -1 });
 
     return users.map(user => {
-      const { password, ...userWithoutPassword } = user;
-      return userWithoutPassword;
+        const userObj = user.toObject();
+        delete userObj.password;
+        return userObj;
     });
   }
 
   // Get hospital authorities
-  static getHospitalAuthorities() {
-    const authorities = db.prepare(`
-      SELECT u.id, u.email, u.name, u.phone, u.userType, u.createdAt,
-             ha.role, ha.hospitalId, ha.permissions,
-             h.name as hospitalName
-      FROM users u
-      INNER JOIN hospital_authorities ha ON u.id = ha.userId
-      LEFT JOIN hospitals h ON ha.hospitalId = h.id
-      WHERE u.isActive = 1
-      ORDER BY u.createdAt DESC
-    `).all();
+  static async getHospitalAuthorities() {
+    // Join with Hospital to get name? 
+    // Mongoose populate.
+    const authorities = await User.find({ 
+        userType: 'hospital-authority', 
+        isActive: true 
+    })
+    .populate('hospital_id', 'name')
+    .sort({ createdAt: -1 });
 
-    return authorities;
+    return authorities.map(u => {
+        const userObj = u.toObject();
+        // Flat map hospital name if needed for frontend compat
+        if (userObj.hospital_id && userObj.hospital_id.name) {
+            userObj.hospitalName = userObj.hospital_id.name;
+        }
+        delete userObj.password;
+        return userObj;
+    });
   }
 
   // Deactivate user
-  static deactivateUser(id) {
-    const stmt = db.prepare(`
-      UPDATE users 
-      SET isActive = 0, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    
-    return stmt.run(id);
+  static async deactivateUser(id) {
+    return User.findByIdAndUpdate(id, { isActive: false });
   }
 
   // Verify JWT token
@@ -284,37 +248,30 @@ class UserService {
   }
 
   // Create user (for testing purposes)
-  static create(userData) {
+  static async create(userData) {
     const { email, password, name, phone, userType, hospital_id, balance } = userData;
 
-    // Hash password synchronously for testing
     const saltRounds = 10;
-    const hashedPassword = bcrypt.hashSync(password, saltRounds);
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Insert user with default balance
-    const stmt = db.prepare(`
-      INSERT INTO users (email, password, name, phone, userType, hospital_id, balance)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const result = stmt.run(email, hashedPassword, name, phone, userType, hospital_id, balance || 10000.00);
-    const userId = result.lastInsertRowid;
-
-    // Return user without password
-    const user = db.prepare(`
-      SELECT id, email, name, phone, userType, hospital_id, createdAt, updatedAt
-      FROM users WHERE id = ?
-    `).get(userId);
-
-    return user;
+    const user = await User.create({
+        email, 
+        password: hashedPassword, 
+        name, 
+        phone, 
+        userType, 
+        hospital_id, 
+        balance: balance || 10000.00
+    });
+    
+    const userObj = user.toObject();
+    delete userObj.password;
+    return userObj;
   }
 
   // Generate JWT token (for testing purposes)
-  static generateToken(userId) {
-    const user = db.prepare(`
-      SELECT id, email, userType, hospital_id
-      FROM users WHERE id = ?
-    `).get(userId);
+  static async generateToken(userId) {
+    const user = await User.findById(userId);
 
     if (!user) {
       throw new Error('User not found');
@@ -322,7 +279,7 @@ class UserService {
 
     return jwt.sign(
       {
-        userId: user.id,
+        userId: user._id,
         email: user.email,
         userType: user.userType,
         hospital_id: user.hospital_id
@@ -333,4 +290,4 @@ class UserService {
   }
 }
 
-module.exports = UserService; 
+module.exports = UserService;

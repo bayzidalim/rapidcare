@@ -184,7 +184,7 @@ exports.login = async (req, res) => {
 // Get current user profile
 exports.getProfile = async (req, res) => {
   try {
-    const user = UserService.getById(req.user.id);
+    const user = await UserService.getById(req.user.id);
 
     res.json({
       success: true,
@@ -212,7 +212,7 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
-    const user = UserService.updateProfile(req.user.id, { name, phone });
+    const user = await UserService.updateProfile(req.user.id, { name, phone });
 
     res.json({
       success: true,
@@ -267,7 +267,7 @@ exports.changePassword = async (req, res) => {
 // Get all users (admin only)
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = UserService.getAll();
+    const users = await UserService.getAll();
 
     res.json({
       success: true,
@@ -286,7 +286,7 @@ exports.getAllUsers = async (req, res) => {
 // Get hospital authorities
 exports.getHospitalAuthorities = async (req, res) => {
   try {
-    const authorities = UserService.getHospitalAuthorities();
+    const authorities = await UserService.getHospitalAuthorities();
 
     res.json({
       success: true,
@@ -323,7 +323,7 @@ exports.assignHospital = async (req, res) => {
       });
     }
 
-    const user = UserService.assignHospital(userId, hospitalId, role);
+    const user = await UserService.assignHospital(userId, hospitalId, role);
 
     res.json({
       success: true,

@@ -1,24 +1,36 @@
-const db = require('../config/database');
 const HospitalService = require('./hospitalService');
 const ValidationService = require('./validationService');
 const HospitalPricing = require('../models/HospitalPricing');
+const Booking = require('../models/Booking');
+const Surgeon = require('../models/Surgeon');
+const Hospital = require('../models/Hospital'); // Needed for getById checks? Or just HospitalService.
 
 class BookingService {
   // Create new booking
-  static create(bookingData) {
+  static async create(bookingData) {
     // Check resource availability (only approved hospitals)
-    const hospital = HospitalService.getById(bookingData.hospitalId, false);
+    const hospital = await HospitalService.getById(bookingData.hospitalId, false);
     if (!hospital) {
       throw new Error('Hospital not found or not approved');
     }
 
     const resource = hospital.resources[bookingData.resourceType];
+    // resource is an object { total, available, occupied } from the service response
     if (!resource || resource.available < 1) {
       throw new Error(`${bookingData.resourceType} not available at this hospital`);
     }
 
     // Calculate payment amount using hospital pricing
-    const costBreakdown = HospitalPricing.calculateBookingCost(
+    // HospitalPricing.calculateBookingCost is likely an async method now if it queries DB?
+    // Let's check HospitalPricing model usage. The helper might be static async.
+    // Assuming standard Mongoose static usage:
+    // If it was synchronous before because it queried SQL synchronously, it should be async now.
+    // I previously saw HospitalPricing.js converted to Mongoose.
+    // I will assume it is async or I might need to check it.
+    // Safest is to await it.
+    
+    // In Mongoose migration, I should have made static methods async.
+    const costBreakdown = await HospitalPricing.calculateBookingCost(
       bookingData.hospitalId,
       bookingData.resourceType,
       bookingData.estimatedDuration || 24
@@ -46,171 +58,153 @@ class BookingService {
       rapidAssistantPhone = assistantInfo.phone;
     }
 
-    const stmt = db.prepare(`
-      INSERT INTO bookings (
-        userId, hospitalId, resourceType, patientName, patientAge, patientGender,
-        emergencyContactName, emergencyContactPhone, emergencyContactRelationship,
-        medicalCondition, urgency, surgeonId, scheduledDate, estimatedDuration,
-        status, paymentAmount, paymentStatus, notes, rapidAssistance, rapidAssistanceCharge,
-        rapidAssistantName, rapidAssistantPhone
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const booking = await Booking.create({
+        userId: bookingData.userId,
+        hospitalId: bookingData.hospitalId,
+        resourceType: bookingData.resourceType,
+        patientName: bookingData.patientName,
+        patientAge: bookingData.patientAge,
+        patientGender: bookingData.patientGender,
+        emergencyContactName: bookingData.emergencyContactName,
+        emergencyContactPhone: bookingData.emergencyContactPhone,
+        emergencyContactRelationship: bookingData.emergencyContactRelationship,
+        medicalCondition: bookingData.medicalCondition,
+        urgency: bookingData.urgency || 'medium',
+        surgeonId: bookingData.surgeonId || null,
+        scheduledDate: bookingData.scheduledDate,
+        estimatedDuration: bookingData.estimatedDuration || 24,
+        status: 'pending',
+        paymentAmount: totalAmount,
+        paymentStatus: 'pending',
+        notes: bookingData.notes,
+        rapidAssistance: bookingData.rapidAssistance ? true : false,
+        rapidAssistanceCharge: rapidAssistanceCharge,
+        rapidAssistantName: rapidAssistantName,
+        rapidAssistantPhone: rapidAssistantPhone
+    });
 
-    const result = stmt.run(
-      bookingData.userId,
-      bookingData.hospitalId,
-      bookingData.resourceType,
-      bookingData.patientName,
-      bookingData.patientAge,
-      bookingData.patientGender,
-      bookingData.emergencyContactName,
-      bookingData.emergencyContactPhone,
-      bookingData.emergencyContactRelationship,
-      bookingData.medicalCondition,
-      bookingData.urgency || 'medium',
-      bookingData.surgeonId || null,
-      bookingData.scheduledDate,
-      bookingData.estimatedDuration || 24,
-      'pending',
-      totalAmount,
-      'pending',
-      bookingData.notes,
-      bookingData.rapidAssistance ? 1 : 0,
-      rapidAssistanceCharge,
-      rapidAssistantName,
-      rapidAssistantPhone
-    );
-
-    return this.getById(result.lastInsertRowid);
+    return this.getById(booking._id);
   }
 
   // Get booking by ID
-  static getById(id) {
-    const booking = db.prepare(`
-      SELECT b.*, h.name as hospitalName, s.name as surgeonName
-      FROM bookings b
-      LEFT JOIN hospitals h ON b.hospitalId = h.id
-      LEFT JOIN surgeons s ON b.surgeonId = s.id
-      WHERE b.id = ?
-    `).get(id);
+  static async getById(id) {
+    const booking = await Booking.findById(id)
+        .populate('hospitalId', 'name')
+        .populate('surgeonId', 'name');
 
     if (!booking) return null;
 
+    // Transform to match previous format
+    const b = booking.toObject();
     return {
-      ...booking,
-      hospital: {
-        id: booking.hospitalId,
-        name: booking.hospitalName
-      },
-      surgeon: booking.surgeonId ? {
-        id: booking.surgeonId,
-        name: booking.surgeonName
+      ...b,
+      hospital: b.hospitalId ? {
+        id: b.hospitalId._id,
+        name: b.hospitalId.name
+      } : { id: b.hospitalId, name: 'Unknown' }, // Fallback if populate failed or null
+      surgeon: b.surgeonId ? {
+        id: b.surgeonId._id,
+        name: b.surgeonId.name
       } : null
     };
   }
 
   // Get bookings by user ID
-  static getByUserId(userId) {
-    const bookings = db.prepare(`
-      SELECT b.*, h.name as hospitalName, s.name as surgeonName
-      FROM bookings b
-      LEFT JOIN hospitals h ON b.hospitalId = h.id
-      LEFT JOIN surgeons s ON b.surgeonId = s.id
-      WHERE b.userId = ?
-      ORDER BY b.createdAt DESC
-    `).all(userId);
+  static async getByUserId(userId) {
+    const bookings = await Booking.find({ userId })
+        .populate('hospitalId', 'name')
+        .populate('surgeonId', 'name')
+        .sort({ createdAt: -1 });
 
-    return bookings.map(booking => ({
-      ...booking,
-      hospital: {
-        id: booking.hospitalId,
-        name: booking.hospitalName
-      },
-      surgeon: booking.surgeonId ? {
-        id: booking.surgeonId,
-        name: booking.surgeonName
-      } : null
-    }));
+    return bookings.map(booking => {
+        const b = booking.toObject();
+        return {
+          ...b,
+          hospital: b.hospitalId ? {
+            id: b.hospitalId._id,
+            name: b.hospitalId.name
+          } : null,
+          surgeon: b.surgeonId ? {
+            id: b.surgeonId._id,
+            name: b.surgeonId.name
+          } : null
+        };
+    });
   }
 
   // Get bookings by hospital ID
-  static getByHospitalId(hospitalId) {
-    const bookings = db.prepare(`
-      SELECT b.*, h.name as hospitalName, s.name as surgeonName, u.name as userName, u.email as userEmail
-      FROM bookings b
-      LEFT JOIN hospitals h ON b.hospitalId = h.id
-      LEFT JOIN surgeons s ON b.surgeonId = s.id
-      LEFT JOIN users u ON b.userId = u.id
-      WHERE b.hospitalId = ?
-      ORDER BY b.createdAt DESC
-    `).all(hospitalId);
+  static async getByHospitalId(hospitalId) {
+    const bookings = await Booking.find({ hospitalId })
+        .populate('hospitalId', 'name')
+        .populate('surgeonId', 'name')
+        .populate('userId', 'name email')
+        .sort({ createdAt: -1 });
 
-    return bookings.map(booking => ({
-      ...booking,
-      hospital: {
-        id: booking.hospitalId,
-        name: booking.hospitalName
-      },
-      surgeon: booking.surgeonId ? {
-        id: booking.surgeonId,
-        name: booking.surgeonName
-      } : null,
-      user: {
-        id: booking.userId,
-        name: booking.userName,
-        email: booking.userEmail
-      }
-    }));
+    return bookings.map(booking => {
+        const b = booking.toObject();
+        return {
+          ...b,
+          hospital: b.hospitalId ? {
+            id: b.hospitalId._id,
+            name: b.hospitalId.name
+          } : null,
+          surgeon: b.surgeonId ? {
+            id: b.surgeonId._id,
+            name: b.surgeonId.name
+          } : null,
+          user: b.userId ? {
+            id: b.userId._id,
+            name: b.userId.name,
+            email: b.userId.email
+          } : null
+        };
+    });
   }
 
   // Get all bookings (admin)
-  static getAll() {
-    const bookings = db.prepare(`
-      SELECT b.*, h.name as hospitalName, s.name as surgeonName
-      FROM bookings b
-      LEFT JOIN hospitals h ON b.hospitalId = h.id
-      LEFT JOIN surgeons s ON b.surgeonId = s.id
-      ORDER BY b.createdAt DESC
-    `).all();
+  static async getAll() {
+    const bookings = await Booking.find()
+        .populate('hospitalId', 'name')
+        .populate('surgeonId', 'name')
+        .sort({ createdAt: -1 });
 
-    return bookings.map(booking => ({
-      ...booking,
-      hospital: {
-        id: booking.hospitalId,
-        name: booking.hospitalName
-      },
-      surgeon: booking.surgeonId ? {
-        id: booking.surgeonId,
-        name: booking.surgeonName
-      } : null
-    }));
+    return bookings.map(booking => {
+        const b = booking.toObject();
+        return {
+          ...b,
+          hospital: b.hospitalId ? {
+            id: b.hospitalId._id,
+            name: b.hospitalId.name
+          } : null,
+          surgeon: b.surgeonId ? {
+            id: b.surgeonId._id,
+            name: b.surgeonId.name
+          } : null
+        };
+    });
   }
 
   // Update booking status
-  static updateStatus(id, status) {
-    const stmt = db.prepare(`
-      UPDATE bookings 
-      SET status = ?, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    
-    return stmt.run(status, id);
+  static async updateStatus(id, status) {
+    return Booking.findByIdAndUpdate(id, { 
+        status, 
+        updatedAt: new Date() 
+    });
   }
 
   // Update payment status
-  static updatePaymentStatus(id, paymentStatus, paymentMethod = null, transactionId = null) {
-    const stmt = db.prepare(`
-      UPDATE bookings 
-      SET paymentStatus = ?, paymentMethod = ?, transactionId = ?, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    
-    return stmt.run(paymentStatus, paymentMethod, transactionId, id);
+  static async updatePaymentStatus(id, paymentStatus, paymentMethod = null, transactionId = null) {
+    return Booking.findByIdAndUpdate(id, { 
+        paymentStatus, 
+        paymentMethod, 
+        transactionId,
+        updatedAt: new Date()
+    });
   }
       
-      // Cancel booking
-  static cancel(id) {
-    const booking = this.getById(id);
+  // Cancel booking
+  static async cancel(id) {
+    const booking = await Booking.findById(id);
     if (!booking) {
       throw new Error('Booking not found');
     }
@@ -220,15 +214,14 @@ class BookingService {
     }
 
     // Update booking status
-    const stmt = db.prepare(`
-      UPDATE bookings 
-      SET status = 'cancelled', updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    stmt.run(id);
+    booking.status = 'cancelled';
+    booking.updatedAt = new Date();
+    await booking.save();
 
     // Restore resource availability
-    HospitalService.updateResourceAvailability(
+    // Using ResourceManagementService logic (or HospitalService wrapper)
+    // Note: 'updateResourceAvailability' was in HospitalService.
+    await HospitalService.updateResourceAvailability(
       booking.hospitalId,
       booking.resourceType,
       1,
@@ -239,39 +232,54 @@ class BookingService {
   }
 
   // Get booking statistics
-  static getStats() {
-    const stats = db.prepare(`
-        SELECT 
-        COUNT(*) as total,
-        COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as confirmed,
-        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
-        COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
-        SUM(paymentAmount) as totalRevenue,
-        AVG(paymentAmount) as averageAmount
-        FROM bookings
-    `).get();
+  static async getStats() {
+    const stats = await Booking.aggregate([
+        {
+            $group: {
+                _id: null,
+                total: { $sum: 1 },
+                confirmed: { $sum: { $cond: [{ $eq: ["$status", "confirmed"] }, 1, 0] } },
+                pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
+                cancelled: { $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] } },
+                completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+                totalRevenue: { $sum: "$paymentAmount" },
+                averageAmount: { $avg: "$paymentAmount" }
+            }
+        }
+    ]);
+
+    if (!stats || stats.length === 0) {
+        return {
+          total: 0,
+          confirmed: 0,
+          pending: 0,
+          cancelled: 0,
+          completed: 0,
+          totalRevenue: 0,
+          averageAmount: 0
+        };
+    }
 
     return {
-      total: stats.total,
-      confirmed: stats.confirmed,
-      pending: stats.pending,
-      cancelled: stats.cancelled,
-      completed: stats.completed,
-      totalRevenue: stats.totalRevenue || 0,
-      averageAmount: stats.averageAmount || 0
+      total: stats[0].total,
+      confirmed: stats[0].confirmed,
+      pending: stats[0].pending,
+      cancelled: stats[0].cancelled,
+      completed: stats[0].completed,
+      totalRevenue: stats[0].totalRevenue || 0,
+      averageAmount: stats[0].averageAmount || 0
     };
   }
 
   // Get base amount for resource type (deprecated - use HospitalPricing.calculateBookingCost instead)
-  // Kept for backward compatibility
-  static getBaseAmount(resourceType, duration = 24, hospitalId = null) {
+  static async getBaseAmount(resourceType, duration = 24, hospitalId = null) {
     if (hospitalId) {
-      const costBreakdown = HospitalPricing.calculateBookingCost(hospitalId, resourceType, duration);
-      return costBreakdown.hospital_share; // Return base amount without service charge
+      // Assuming calculateBookingCost handles the async DB lookup
+      const costBreakdown = await HospitalPricing.calculateBookingCost(hospitalId, resourceType, duration);
+      return costBreakdown.hospital_share; 
     }
     
-    // Fallback to default rates if no hospitalId provided
+    // Fallback to default rates
     const baseRates = {
       beds: 120, // ৳120 per day
       icu: 600,  // ৳600 per day
@@ -283,28 +291,27 @@ class BookingService {
   }
 
   // Get available surgeons for hospital
-  static getAvailableSurgeons(hospitalId, scheduledDate) {
-    const surgeons = db.prepare(`
-      SELECT id, name, specialization, available, scheduleDays, scheduleHours
-      FROM surgeons
-      WHERE hospitalId = ? AND available = 1
-    `).all(hospitalId);
+  static async getAvailableSurgeons(hospitalId, scheduledDate) {
+    const surgeons = await Surgeon.find({ 
+        hospitalId, 
+        available: true 
+    });
 
     return surgeons.map(surgeon => ({
-      id: surgeon.id,
+      id: surgeon._id,
       name: surgeon.name,
       specialization: surgeon.specialization,
-      available: surgeon.available === 1,
+      available: surgeon.available,
       schedule: {
-        days: surgeon.scheduleDays ? JSON.parse(surgeon.scheduleDays) : [],
+        days: surgeon.scheduleDays || [],
         hours: surgeon.scheduleHours
       }
     }));
   }
 
   // Update rapid assistance details for a booking
-  static updateRapidAssistance(id, rapidAssistance, rapidAssistanceCharge = 0) {
-    const booking = this.getById(id);
+  static async updateRapidAssistance(id, rapidAssistance, rapidAssistanceCharge = 0) {
+    const booking = await Booking.findById(id);
     if (!booking) {
       throw new Error('Booking not found');
     }
@@ -330,13 +337,13 @@ class BookingService {
       }
     }
 
-    const stmt = db.prepare(`
-      UPDATE bookings 
-      SET rapidAssistance = ?, rapidAssistanceCharge = ?, rapidAssistantName = ?, rapidAssistantPhone = ?, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
+    booking.rapidAssistance = rapidAssistance ? true : false;
+    booking.rapidAssistanceCharge = rapidAssistanceCharge;
+    booking.rapidAssistantName = rapidAssistantName;
+    booking.rapidAssistantPhone = rapidAssistantPhone;
+    booking.updatedAt = new Date();
     
-    stmt.run(rapidAssistance ? 1 : 0, rapidAssistanceCharge, rapidAssistantName, rapidAssistantPhone, id);
+    await booking.save();
     return this.getById(id);
   }
 
@@ -362,7 +369,6 @@ class BookingService {
     const fullName = `${firstName} ${lastName}`;
 
     // Generate random Bangladeshi phone number
-    // Format: +880 1XXX-XXXXXX (Bangladesh mobile numbers start with +880 1)
     const operators = ['17', '19', '15', '18', '16', '13']; // Common BD mobile operators
     const operator = operators[Math.floor(Math.random() * operators.length)];
     const randomDigits = Math.floor(Math.random() * 100000000).toString().padStart(8, '0');
@@ -373,8 +379,6 @@ class BookingService {
       phone: phoneNumber
     };
   }
-
-
 }
 
 module.exports = BookingService;

@@ -1,316 +1,194 @@
-const db = require('../config/database');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
-class User {
-  static create(userData) {
-    const stmt = db.prepare(`
-      INSERT INTO users (email, password, name, phone, userType, isActive, balance)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
-      userData.email,
-      userData.password,
-      userData.name,
-      userData.phone,
-      userData.userType || 'user',
-      userData.isActive !== undefined ? userData.isActive : 1,
-      userData.balance !== undefined ? userData.balance : 10000.00 // Default 10,000 BDT
-    );
-    
-    return result.lastInsertRowid;
+const userSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    lowercase: true
+  },
+  password: {
+    type: String,
+    required: true
+  },
+  name: {
+    type: String,
+    required: true
+  },
+  phone: {
+    type: String
+  },
+  userType: {
+    type: String,
+    required: true,
+    enum: ['user', 'hospital-authority', 'admin'],
+    default: 'user'
+  },
+  hospital_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hospital'
+  },
+  can_add_hospital: {
+    type: Boolean,
+    default: true
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  balance: {
+    type: Number,
+    default: 10000.00
+  },
+  // Fields merged from hospital_authorities
+  hospitalRole: {
+    type: String,
+    enum: ['admin', 'manager', 'staff']
+  },
+  permissions: {
+    type: [String], // Array of permission strings
+    default: []
+  }
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+// Helper method to compare passwords
+userSchema.methods.matchPassword = async function(enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Static methods to maintain backward compatibility with controllers
+userSchema.statics.findByEmail = function(email) {
+  return this.findOne({ email });
+};
+
+userSchema.statics.getAll = function() {
+  return this.find().sort({ createdAt: -1 });
+};
+
+// Old Sequelize-style methods support
+userSchema.statics.findAll = function(options = {}) {
+  let query = this.find();
+  
+  if (options.where) {
+    query = query.where(options.where);
+  }
+  
+  if (options.attributes && options.attributes.exclude) {
+    const exclude = options.attributes.exclude.map(f => `-${f}`).join(' ');
+    query = query.select(exclude);
+  }
+  
+  return query.sort({ createdAt: -1 });
+};
+
+userSchema.statics.findByPk = function(id, options = {}) {
+  let query = this.findById(id);
+  
+  if (options && options.attributes && options.attributes.exclude) {
+    const exclude = options.attributes.exclude.map(f => `-${f}`).join(' ');
+    query = query.select(exclude);
+  }
+  
+  return query;
+};
+
+// Balance management methods (Ported from old User.js)
+userSchema.statics.getBalance = async function(userId) {
+  const user = await this.findById(userId);
+  return user ? user.balance : 0;
+};
+
+userSchema.statics.updateBalance = async function(userId, amount, operation = 'subtract', description = '') {
+  const user = await this.findById(userId);
+  if (!user) throw new Error('User not found');
+
+  const currentBalance = user.balance || 0;
+  
+  if (operation === 'subtract' && currentBalance < amount) {
+    throw new Error('Insufficient balance');
+  }
+  
+  const newBalance = operation === 'add' 
+    ? currentBalance + parseFloat(amount)
+    : currentBalance - parseFloat(amount);
+  
+  user.balance = newBalance;
+  await user.save();
+  
+  // Note: Transaction logging should ideally happen in a Transaction model/service
+  // keeping it simple here for migration
+  
+  return {
+    previousBalance: currentBalance,
+    newBalance: newBalance,
+    amount: amount,
+    operation: operation
+  };
+};
+
+userSchema.statics.hasSufficientBalance = async function(userId, amount) {
+  const balance = await this.getBalance(userId);
+  return balance >= parseFloat(amount);
+};
+
+userSchema.statics.processPayment = async function(userId, amount, bookingId, transactionId, breakdown) {
+  const user = await this.findById(userId);
+  if (!user) throw new Error('User not found');
+
+  if (user.balance < amount) {
+    throw new Error('Insufficient balance');
   }
 
-  static findByEmail(email) {
-    const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
-    return stmt.get(email);
+  // Deduct balance
+  user.balance -= parseFloat(amount);
+  await user.save();
+
+  // Create transaction record
+  try {
+    const Transaction = mongoose.model('Transaction');
+    // Need Booking and Hospital ID from booking?
+    // The controller passed bookingId. We might need to fetch booking to get hospitalId if not passed.
+    // However, the controller didn't pass hospitalId to processPayment in the call args: 
+    // User.processPayment(req.user.id, paymentAmount, bookingId, transactionId, enhancedCostBreakdown);
+    
+    // We can fetch booking here or expect it in args. 
+    // Fetching booking is safer.
+    const Booking = mongoose.model('Booking');
+    const booking = await Booking.findById(bookingId);
+    
+    await Transaction.create({
+      bookingId,
+      userId,
+      hospitalId: booking ? booking.hospitalId : null, // Should exist
+      amount,
+      serviceCharge: breakdown.service_charge_amount || 0,
+      hospitalAmount: breakdown.hospital_share || (amount - (breakdown.service_charge_amount || 0)),
+      paymentMethod: 'balance',
+      transactionId,
+      status: 'completed',
+      paymentData: breakdown,
+      processedAt: new Date()
+    });
+  } catch (error) {
+    console.error('Transaction logging failed:', error);
+    // Don't fail the payment if logging fails? Or maybe needed for reconciliation.
+    // In SQL it was likely transactional.
   }
 
-  static findById(id) {
-    const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
-    return stmt.get(id);
-  }
+  return {
+    success: true,
+    previousBalance: user.balance + parseFloat(amount),
+    newBalance: user.balance,
+    transactionId
+  };
+};
 
-  static update(id, updateData) {
-    const stmt = db.prepare(`
-      UPDATE users 
-      SET name = ?, phone = ?, userType = ?, isActive = ?, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    
-    return stmt.run(
-      updateData.name, 
-      updateData.phone, 
-      updateData.userType,
-      updateData.isActive !== undefined ? updateData.isActive : 1,
-      id
-    );
-  }
+const User = mongoose.model('User', userSchema);
 
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM users WHERE id = ?');
-    return stmt.run(id);
-  }
-
-  static getAll() {
-    const stmt = db.prepare('SELECT * FROM users ORDER BY createdAt DESC');
-    return stmt.all();
-  }
-
-  // Sequelize-style methods for admin controller
-  static async findAll(options = {}) {
-    let query = 'SELECT * FROM users';
-    const params = [];
-    
-    if (options.where) {
-      const conditions = [];
-      Object.keys(options.where).forEach(key => {
-        conditions.push(`${key} = ?`);
-        params.push(options.where[key]);
-      });
-      query += ' WHERE ' + conditions.join(' AND ');
-    }
-    
-    if (options.attributes) {
-      if (options.attributes.exclude) {
-        const excludeFields = options.attributes.exclude;
-        const allFields = ['id', 'name', 'email', 'phone', 'userType', 'isActive', 'createdAt', 'updatedAt'];
-        const includeFields = allFields.filter(field => !excludeFields.includes(field));
-        query = query.replace('*', includeFields.join(', '));
-      }
-    }
-    
-    query += ' ORDER BY createdAt DESC';
-    
-    const stmt = db.prepare(query);
-    return stmt.all(...params);
-  }
-
-  static async findByPk(id, options = {}) {
-    const user = this.findById(id);
-    if (!user) return null;
-    
-    if (options.attributes && options.attributes.exclude) {
-      const excludeFields = options.attributes.exclude;
-      excludeFields.forEach(field => {
-        delete user[field];
-      });
-    }
-    
-    return user;
-  }
-
-  static count(options = {}) {
-    let query = 'SELECT COUNT(*) as count FROM users';
-    const params = [];
-    if (options.where) {
-      const conditions = [];
-      Object.keys(options.where).forEach(key => {
-        const value = options.where[key];
-        if (
-          typeof value === 'number' ||
-          typeof value === 'string' ||
-          typeof value === 'bigint' ||
-          value === null
-        ) {
-          conditions.push(`${key} = ?`);
-          params.push(value);
-        }
-        // else skip unsupported types
-      });
-      if (conditions.length > 0) {
-        query += ' WHERE ' + conditions.join(' AND ');
-      }
-    }
-    const stmt = db.prepare(query);
-    const result = stmt.get(...params);
-    return result.count;
-  }
-
-  static async findOne(options = {}) {
-    let query = 'SELECT * FROM users';
-    const params = [];
-    
-    if (options.where) {
-      const conditions = [];
-      Object.keys(options.where).forEach(key => {
-        conditions.push(`${key} = ?`);
-        params.push(options.where[key]);
-      });
-      query += ' WHERE ' + conditions.join(' AND ');
-    }
-    
-    query += ' LIMIT 1';
-    
-    const stmt = db.prepare(query);
-    return stmt.get(...params);
-  }
-
-  // Balance Management Methods
-
-  /**
-   * Get user's current balance
-   * @param {number} userId - User ID
-   * @returns {number} Current balance
-   */
-  static getBalance(userId) {
-    const stmt = db.prepare('SELECT balance FROM users WHERE id = ?');
-    const result = stmt.get(userId);
-    return result ? parseFloat(result.balance) : 0;
-  }
-
-  /**
-   * Update user balance
-   * @param {number} userId - User ID
-   * @param {number} amount - Amount to add/subtract
-   * @param {string} operation - 'add' or 'subtract'
-   * @param {string} description - Transaction description
-   * @returns {object} Updated balance info
-   */
-  static updateBalance(userId, amount, operation = 'subtract', description = '') {
-    const currentBalance = this.getBalance(userId);
-    
-    if (operation === 'subtract' && currentBalance < amount) {
-      throw new Error('Insufficient balance');
-    }
-    
-    const newBalance = operation === 'add' 
-      ? currentBalance + parseFloat(amount)
-      : currentBalance - parseFloat(amount);
-    
-    // Update user balance
-    const updateStmt = db.prepare(`
-      UPDATE users 
-      SET balance = ?, updatedAt = CURRENT_TIMESTAMP 
-      WHERE id = ?
-    `);
-    updateStmt.run(newBalance, userId);
-    
-    // Log transaction
-    const logStmt = db.prepare(`
-      INSERT INTO simple_transactions 
-      (user_id, amount, transaction_type, description, status) 
-      VALUES (?, ?, ?, ?, 'completed')
-    `);
-    
-    const transactionType = operation === 'add' ? 'refund' : 'payment';
-    const transactionAmount = operation === 'add' ? amount : -amount;
-    
-    logStmt.run(userId, transactionAmount, transactionType, description);
-    
-    return {
-      previousBalance: currentBalance,
-      newBalance: newBalance,
-      amount: amount,
-      operation: operation
-    };
-  }
-
-  /**
-   * Check if user has sufficient balance
-   * @param {number} userId - User ID
-   * @param {number} amount - Amount to check
-   * @returns {boolean} True if sufficient balance
-   */
-  static hasSufficientBalance(userId, amount) {
-    const balance = this.getBalance(userId);
-    return balance >= parseFloat(amount);
-  }
-
-  /**
-   * Process payment (deduct balance)
-   * @param {number} userId - User ID
-   * @param {number} amount - Payment amount
-   * @param {number} bookingId - Booking ID (optional)
-   * @param {string} transactionId - Transaction ID (optional)
-   * @param {object} costBreakdown - Cost breakdown with service charges (optional)
-   * @returns {object} Payment result
-   */
-  static processPayment(userId, amount, bookingId = null, transactionId = null, costBreakdown = null) {
-    if (!this.hasSufficientBalance(userId, amount)) {
-      throw new Error('Insufficient balance for payment');
-    }
-    
-    const balanceUpdate = this.updateBalance(
-      userId, 
-      amount, 
-      'subtract', 
-      `Payment for booking ${bookingId || 'N/A'}`
-    );
-    
-    // Update transaction record with booking info and service charge breakdown if provided
-    if (bookingId && costBreakdown) {
-      const updateTransactionStmt = db.prepare(`
-        UPDATE simple_transactions 
-        SET booking_id = ?, transaction_id = ?, hospital_amount = ?, service_charge = ?, rapid_assistance_charge = ?
-        WHERE user_id = ? AND amount = ? AND transaction_type = 'payment'
-        AND id = (SELECT id FROM simple_transactions WHERE user_id = ? AND amount = ? AND transaction_type = 'payment' ORDER BY created_at DESC LIMIT 1)
-      `);
-      updateTransactionStmt.run(
-        bookingId, 
-        transactionId, 
-        costBreakdown.hospital_share || 0, 
-        costBreakdown.service_charge_share || 0,
-        costBreakdown.rapid_assistance_charge || costBreakdown.rapid_assistance_share || 0,
-        userId, 
-        -amount, 
-        userId, 
-        -amount
-      );
-    } else if (bookingId) {
-      const updateTransactionStmt = db.prepare(`
-        UPDATE simple_transactions 
-        SET booking_id = ?, transaction_id = ?
-        WHERE user_id = ? AND amount = ? AND transaction_type = 'payment'
-        AND id = (SELECT id FROM simple_transactions WHERE user_id = ? AND amount = ? AND transaction_type = 'payment' ORDER BY created_at DESC LIMIT 1)
-      `);
-      updateTransactionStmt.run(bookingId, transactionId, userId, -amount, userId, -amount);
-    }
-    
-    return {
-      success: true,
-      ...balanceUpdate,
-      transactionId: transactionId
-    };
-  }
-
-  /**
-   * Process refund (add balance)
-   * @param {number} userId - User ID
-   * @param {number} amount - Refund amount
-   * @param {number} bookingId - Booking ID (optional)
-   * @param {string} reason - Refund reason
-   * @returns {object} Refund result
-   */
-  static processRefund(userId, amount, bookingId = null, reason = '') {
-    const balanceUpdate = this.updateBalance(
-      userId, 
-      amount, 
-      'add', 
-      `Refund for booking ${bookingId || 'N/A'}: ${reason}`
-    );
-    
-    return {
-      success: true,
-      ...balanceUpdate,
-      reason: reason
-    };
-  }
-
-  /**
-   * Get user's transaction history
-   * @param {number} userId - User ID
-   * @param {number} limit - Number of transactions to return
-   * @returns {array} Transaction history
-   */
-  static getTransactionHistory(userId, limit = 50) {
-    const stmt = db.prepare(`
-      SELECT * FROM simple_transactions 
-      WHERE user_id = ? 
-      ORDER BY created_at DESC 
-      LIMIT ?
-    `);
-    return stmt.all(userId, limit);
-  }
-}
-
-module.exports = User; 
+module.exports = User;

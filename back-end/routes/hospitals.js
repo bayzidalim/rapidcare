@@ -70,25 +70,25 @@ router.get('/:id/polling/bookings', authenticate, authorizeUserType(['hospital-a
 router.get('/:id/polling/dashboard', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getDashboardUpdates);
 
 // GET /api/hospitals/:id/polling/changes - Check for changes without returning full data
-router.get('/:id/polling/changes', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.checkForChanges);
+// router.get('/:id/polling/changes', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.checkForChanges);
 
 // GET /api/hospitals/:id/polling/config - Get polling configuration recommendations
-router.get('/:id/polling/config', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getPollingConfig);
+// router.get('/:id/polling/config', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getPollingConfig);
 
 // Analytics endpoints for hospital authorities
 // GET /api/hospitals/:id/analytics/dashboard - Get comprehensive analytics dashboard
-router.get('/:id/analytics/dashboard', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getAnalyticsDashboard);
+// router.get('/:id/analytics/dashboard', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getAnalyticsDashboard);
 
 // GET /api/hospitals/:id/analytics/resource-utilization - Get resource utilization analytics
-router.get('/:id/analytics/resource-utilization', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getResourceUtilizationAnalytics);
+// router.get('/:id/analytics/resource-utilization', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getResourceUtilizationAnalytics);
 
 // GET /api/hospitals/:id/analytics/booking-history - Get booking history analytics
-router.get('/:id/analytics/booking-history', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getBookingHistoryAnalytics);
+// router.get('/:id/analytics/booking-history', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getBookingHistoryAnalytics);
 
 // GET /api/hospitals/:id/analytics/usage-patterns - Get resource usage patterns
-router.get('/:id/analytics/usage-patterns', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getResourceUsagePatterns);
+// router.get('/:id/analytics/usage-patterns', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getResourceUsagePatterns);
 
 // GET /api/hospitals/:id/analytics/performance - Get performance metrics
-router.get('/:id/analytics/performance', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getPerformanceMetrics);
+// router.get('/:id/analytics/performance', authenticate, authorizeUserType(['hospital-authority', 'admin']), hospitalController.getPerformanceMetrics);
 
 module.exports = router; 

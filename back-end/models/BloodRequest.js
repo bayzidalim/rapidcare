@@ -1,174 +1,115 @@
-const db = require('../config/database');
+const mongoose = require('mongoose');
 
-class BloodRequest {
-  static create(requestData) {
-    const stmt = db.prepare(`
-      INSERT INTO blood_requests (
-        requesterId, requesterName, requesterPhone, bloodType, units,
-        urgency, hospitalName, hospitalAddress, hospitalContact,
-        patientName, patientAge, medicalCondition, requiredBy
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
-      requestData.requesterId,
-      requestData.requesterName,
-      requestData.requesterPhone,
-      requestData.bloodType,
-      requestData.units,
-      requestData.urgency,
-      requestData.hospitalName,
-      requestData.hospitalAddress,
-      requestData.hospitalContact,
-      requestData.patientName,
-      requestData.patientAge,
-      requestData.medicalCondition,
-      requestData.requiredBy
-    );
-    
-    return result.lastInsertRowid;
-  }
+const bloodRequestSchema = new mongoose.Schema({
+  requesterId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  requesterName: {
+    type: String,
+    required: true
+  },
+  requesterPhone: {
+    type: String,
+    required: true
+  },
+  bloodType: {
+    type: String,
+    required: true
+  },
+  units: {
+    type: Number,
+    required: true
+  },
+  urgency: {
+    type: String,
+    default: 'medium'
+  },
+  hospitalName: String,
+  hospitalAddress: String,
+  hospitalContact: String,
+  patientName: String,
+  patientAge: Number,
+  medicalCondition: String,
+  requiredBy: {
+    type: Date,
+    required: true
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'fulfilled', 'cancelled', 'expired'],
+    default: 'pending'
+  },
+  notes: String
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
 
-  static findById(id) {
-    const stmt = db.prepare(`
-      SELECT br.*, u.name as requesterUserName
-      FROM blood_requests br
-      LEFT JOIN users u ON br.requesterId = u.id
-      WHERE br.id = ?
-    `);
-    return stmt.get(id);
-  }
+// Virtual for matched donors
+bloodRequestSchema.virtual('matchedDonors', {
+  ref: 'MatchedDonor',
+  localField: '_id',
+  foreignField: 'bloodRequestId'
+});
 
-  static findByRequesterId(requesterId) {
-    const stmt = db.prepare(`
-      SELECT * FROM blood_requests 
-      WHERE requesterId = ?
-      ORDER BY createdAt DESC
-    `);
-    return stmt.all(requesterId);
-  }
+// Static methods
+bloodRequestSchema.statics.getAll = function() {
+    return this.find().sort({ createdAt: -1 });
+};
 
-  static getAll() {
-    const stmt = db.prepare(`
-      SELECT br.*, u.name as requesterUserName
-      FROM blood_requests br
-      LEFT JOIN users u ON br.requesterId = u.id
-      ORDER BY br.createdAt DESC
-    `);
-    return stmt.all();
-  }
+bloodRequestSchema.statics.findByRequesterId = function(requesterId) {
+    return this.find({ requesterId }).sort({ createdAt: -1 });
+};
 
-  static search(searchTerm) {
-    const stmt = db.prepare(`
-      SELECT br.*, u.name as requesterUserName
-      FROM blood_requests br
-      LEFT JOIN users u ON br.requesterId = u.id
-      WHERE (br.bloodType LIKE ? OR br.hospitalName LIKE ? OR br.patientName LIKE ?)
-      ORDER BY br.createdAt DESC
-    `);
-    const searchPattern = `%${searchTerm}%`;
-    return stmt.all(searchPattern, searchPattern, searchPattern);
-  }
+bloodRequestSchema.statics.search = function(searchTerm) {
+    const regex = new RegExp(searchTerm, 'i');
+    return this.find({
+        $or: [
+            { bloodType: regex },
+            { hospitalName: regex },
+            { patientName: regex }
+        ]
+    }).sort({ createdAt: -1 });
+};
 
-  static updateStatus(id, status) {
-    const stmt = db.prepare(`
-      UPDATE blood_requests 
-      SET status = ?, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    return stmt.run(status, id);
-  }
+bloodRequestSchema.statics.getByStatus = function(status) {
+    return this.find({ status }).sort({ createdAt: -1 });
+};
 
-  static delete(id) {
-    const stmt = db.prepare('DELETE FROM blood_requests WHERE id = ?');
-    return stmt.run(id);
-  }
+bloodRequestSchema.statics.getByBloodType = function(bloodType) {
+    return this.find({ bloodType, status: 'pending' })
+        .sort({ urgency: -1, createdAt: 1 }); // Sort by urgency (desc) then created (asc) like SQL
+};
 
-  static getByStatus(status) {
-    const stmt = db.prepare(`
-      SELECT br.*, u.name as requesterUserName
-      FROM blood_requests br
-      LEFT JOIN users u ON br.requesterId = u.id
-      WHERE br.status = ?
-      ORDER BY br.createdAt DESC
-    `);
-    return stmt.all(status);
-  }
+bloodRequestSchema.statics.updateStatus = async function(id, status) {
+    return this.findByIdAndUpdate(id, { status, updatedAt: new Date() }, { new: true });
+};
 
-  static getByBloodType(bloodType) {
-    const stmt = db.prepare(`
-      SELECT br.*, u.name as requesterUserName
-      FROM blood_requests br
-      LEFT JOIN users u ON br.requesterId = u.id
-      WHERE br.bloodType = ? AND br.status = 'pending'
-      ORDER BY br.urgency DESC, br.createdAt ASC
-    `);
-    return stmt.all(bloodType);
-  }
+// Matched Donors methods wrapper
+bloodRequestSchema.statics.addMatchedDonor = async function(bloodRequestId, donorData) {
+    const MatchedDonor = mongoose.model('MatchedDonor');
+    const match = await MatchedDonor.create({
+        bloodRequestId,
+        donorId: donorData.donorId,
+        donorName: donorData.donorName,
+        donorPhone: donorData.donorPhone
+    });
+    return match._id;
+};
 
-  // Matched donors methods
-  static addMatchedDonor(bloodRequestId, donorData) {
-    const stmt = db.prepare(`
-      INSERT INTO matched_donors (bloodRequestId, donorId, donorName, donorPhone)
-      VALUES (?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
-      bloodRequestId,
-      donorData.donorId,
-      donorData.donorName,
-      donorData.donorPhone
-    );
-    
-    return result.lastInsertRowid;
-  }
+bloodRequestSchema.statics.getMatchedDonors = function(bloodRequestId) {
+    const MatchedDonor = mongoose.model('MatchedDonor');
+    return MatchedDonor.find({ bloodRequestId }).sort({ matchedAt: -1 });
+};
 
-  static getMatchedDonors(bloodRequestId) {
-    const stmt = db.prepare(`
-      SELECT md.*, u.name as donorUserName
-      FROM matched_donors md
-      LEFT JOIN users u ON md.donorId = u.id
-      WHERE md.bloodRequestId = ?
-      ORDER BY md.matchedAt DESC
-    `);
-    return stmt.all(bloodRequestId);
-  }
+bloodRequestSchema.statics.updateMatchedDonorStatus = async function(matchId, status) {
+    const MatchedDonor = mongoose.model('MatchedDonor');
+    return MatchedDonor.findByIdAndUpdate(matchId, { status }, { new: true });
+};
 
-  static updateMatchedDonorStatus(matchId, status) {
-    const stmt = db.prepare(`
-      UPDATE matched_donors 
-      SET status = ?
-      WHERE id = ?
-    `);
-    return stmt.run(status, matchId);
-  }
+const BloodRequest = mongoose.model('BloodRequest', bloodRequestSchema);
 
-  static count(options = {}) {
-    let query = 'SELECT COUNT(*) as count FROM blood_requests';
-    const params = [];
-    if (options.where) {
-      const conditions = [];
-      Object.keys(options.where).forEach(key => {
-        const value = options.where[key];
-        if (
-          typeof value === 'number' ||
-          typeof value === 'string' ||
-          typeof value === 'bigint' ||
-          value === null
-        ) {
-          conditions.push(`${key} = ?`);
-          params.push(value);
-        }
-      });
-      if (conditions.length > 0) {
-        query += ' WHERE ' + conditions.join(' AND ');
-      }
-    }
-    const stmt = db.prepare(query);
-    const result = stmt.get(...params);
-    return result.count;
-  }
-}
-
-module.exports = BloodRequest; 
+module.exports = BloodRequest;

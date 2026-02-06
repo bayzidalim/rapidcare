@@ -1,270 +1,287 @@
-const db = require('../config/database');
+const BloodRequest = require('../models/BloodRequest');
+const MatchedDonor = require('../models/MatchedDonor');
+const mongoose = require('mongoose');
 
 class BloodRequestService {
   // Create new blood request
-  static create(requestData) {
-    const stmt = db.prepare(`
-      INSERT INTO blood_requests (
-        requesterId, requesterName, requesterPhone, bloodType, units,
-        urgency, hospitalName, hospitalAddress, hospitalContact,
-        patientName, patientAge, medicalCondition, requiredBy, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  static async create(requestData) {
+    const request = await BloodRequest.create({
+        requesterId: requestData.requesterId,
+        requesterName: requestData.requesterName,
+        requesterPhone: requestData.requesterPhone,
+        bloodType: requestData.bloodType,
+        units: requestData.units,
+        urgency: requestData.urgency || 'medium',
+        hospitalName: requestData.hospitalName,
+        hospitalAddress: requestData.hospitalAddress,
+        hospitalContact: requestData.hospitalContact,
+        patientName: requestData.patientName,
+        patientAge: requestData.patientAge,
+        medicalCondition: requestData.medicalCondition,
+        requiredBy: requestData.requiredBy,
+        notes: requestData.notes,
+        status: 'pending'
+    });
 
-    const result = stmt.run(
-      requestData.requesterId,
-      requestData.requesterName,
-      requestData.requesterPhone,
-      requestData.bloodType,
-      requestData.units,
-      requestData.urgency || 'medium',
-      requestData.hospitalName,
-      requestData.hospitalAddress,
-      requestData.hospitalContact,
-      requestData.patientName,
-      requestData.patientAge,
-      requestData.medicalCondition,
-      requestData.requiredBy,
-      requestData.notes
-    );
-
-    return this.getById(result.lastInsertRowid);
+    return this.getById(request._id);
   }
 
   // Get blood request by ID
-  static getById(id) {
-    const request = db.prepare(`
-      SELECT * FROM blood_requests WHERE id = ?
-    `).get(id);
+  static async getById(id) {
+    const request = await BloodRequest.findById(id);
 
     if (!request) return null;
 
     // Get matched donors
-    const matchedDonors = db.prepare(`
-      SELECT * FROM matched_donors WHERE bloodRequestId = ?
-    `).all(id);
+    const matchedDonors = await MatchedDonor.find({ bloodRequestId: id });
 
     return {
-      ...request,
-      matchedDonors
+      ...request.toObject(),
+      matchedDonors: matchedDonors.map(d => d.toObject())
     };
   }
 
   // Get blood requests by requester ID
-  static getByRequesterId(requesterId) {
-    const requests = db.prepare(`
-      SELECT * FROM blood_requests 
-      WHERE requesterId = ?
-      ORDER BY createdAt DESC
-    `).all(requesterId);
+  static async getByRequesterId(requesterId) {
+    const requests = await BloodRequest.find({ requesterId }).sort({ createdAt: -1 });
 
-    return requests.map(request => ({
-      ...request,
-      matchedDonors: this.getMatchedDonors(request.id)
+    // Fetch matched donors for each request?
+    // Using Promise.all can be heavy if many requests.
+    // Ideally use virtual population or aggregation.
+    // For now, mapping is safe enough for "my requests" page.
+    return Promise.all(requests.map(async request => {
+        const donors = await this.getMatchedDonors(request._id);
+        return {
+            ...request.toObject(),
+            matchedDonors: donors
+        };
     }));
   }
 
   // Get all blood requests
-  static getAll() {
-    const requests = db.prepare(`
-      SELECT * FROM blood_requests 
-      ORDER BY 
-        CASE urgency 
-          WHEN 'high' THEN 1 
-          WHEN 'medium' THEN 2 
-          WHEN 'low' THEN 3 
-        END,
-        createdAt DESC
-    `).all();
-
-    return requests.map(request => ({
-      ...request,
-      matchedDonors: this.getMatchedDonors(request.id)
+  static async getAll() {
+    // Custom sort for urgency
+    // Can use aggregation addField to assign weight, then sort.
+    const requests = await BloodRequest.aggregate([
+        {
+            $addFields: {
+                urgencyWeight: {
+                    $switch: {
+                        branches: [
+                            { case: { $eq: ["$urgency", "high"] }, then: 1 },
+                            { case: { $eq: ["$urgency", "medium"] }, then: 2 },
+                            { case: { $eq: ["$urgency", "low"] }, then: 3 }
+                        ],
+                        default: 4
+                    }
+                }
+            }
+        },
+        { $sort: { urgencyWeight: 1, createdAt: -1 } }
+    ]);
+    
+    // Matched donors?
+    // If list is long, maybe distinct query is better, or just return basic info.
+    // Original code returned matched donors for ALL requests.
+    return Promise.all(requests.map(async request => {
+        const donors = await this.getMatchedDonors(request._id);
+        return {
+            ...request,
+            matchedDonors: donors
+        };
     }));
   }
 
   // Get active blood requests
-  static getActive() {
-    const requests = db.prepare(`
-      SELECT * FROM blood_requests 
-      WHERE status = 'pending' OR status = 'matched'
-      ORDER BY 
-        CASE urgency 
-          WHEN 'high' THEN 1 
-          WHEN 'medium' THEN 2 
-          WHEN 'low' THEN 3 
-        END,
-        createdAt DESC
-    `).all();
+  static async getActive() {
+    const requests = await BloodRequest.aggregate([
+        { $match: { status: { $in: ['pending', 'matched'] } } },
+        {
+            $addFields: {
+                urgencyWeight: {
+                    $switch: {
+                        branches: [
+                            { case: { $eq: ["$urgency", "high"] }, then: 1 },
+                            { case: { $eq: ["$urgency", "medium"] }, then: 2 },
+                            { case: { $eq: ["$urgency", "low"] }, then: 3 }
+                        ],
+                        default: 4
+                    }
+                }
+            }
+        },
+        { $sort: { urgencyWeight: 1, createdAt: -1 } }
+    ]);
 
-    return requests.map(request => ({
-      ...request,
-      matchedDonors: this.getMatchedDonors(request.id)
+    return Promise.all(requests.map(async request => {
+        const donors = await this.getMatchedDonors(request._id);
+        return {
+            ...request,
+            matchedDonors: donors
+        };
     }));
   }
 
   // Update blood request status
-  static updateStatus(id, status) {
-    const stmt = db.prepare(`
-      UPDATE blood_requests 
-      SET status = ?, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-    
-    return stmt.run(status, id);
+  static async updateStatus(id, status) {
+    return BloodRequest.findByIdAndUpdate(id, { 
+        status, 
+        updatedAt: new Date() 
+    });
   }
 
   // Add matched donor
-  static addMatchedDonor(bloodRequestId, donorData) {
-    const stmt = db.prepare(`
-      INSERT INTO matched_donors (
-        bloodRequestId, donorId, donorName, donorPhone, status
-      ) VALUES (?, ?, ?, ?, ?)
-    `);
-
-    const result = stmt.run(
-      bloodRequestId,
-      donorData.donorId,
-      donorData.donorName,
-      donorData.donorPhone,
-      'pending'
-    );
+  static async addMatchedDonor(bloodRequestId, donorData) {
+    const match = await MatchedDonor.create({
+        bloodRequestId,
+        donorId: donorData.donorId,
+        donorName: donorData.donorName,
+        donorPhone: donorData.donorPhone,
+        status: 'pending',
+        matchedAt: new Date()
+    });
 
     // Update request status to matched
-    this.updateStatus(bloodRequestId, 'matched');
+    await this.updateStatus(bloodRequestId, 'matched');
 
-    return {
-      id: result.lastInsertRowid,
-      bloodRequestId,
-      ...donorData,
-      status: 'pending',
-      matchedAt: new Date().toISOString()
-    };
+    return match.toObject();
   }
 
   // Update donor status
-  static updateDonorStatus(bloodRequestId, donorId, status) {
-    const stmt = db.prepare(`
-      UPDATE matched_donors 
-      SET status = ?
-      WHERE bloodRequestId = ? AND donorId = ?
-    `);
-    
-    return stmt.run(status, bloodRequestId, donorId);
+  static async updateDonorStatus(bloodRequestId, donorId, status) {
+    return MatchedDonor.findOneAndUpdate(
+        { bloodRequestId, donorId },
+        { status },
+        { new: true }
+    );
   }
 
   // Get matched donors for a request
-  static getMatchedDonors(bloodRequestId) {
-    return db.prepare(`
-      SELECT * FROM matched_donors 
-      WHERE bloodRequestId = ?
-      ORDER BY matchedAt DESC
-    `).all(bloodRequestId);
+  static async getMatchedDonors(bloodRequestId) {
+    const donors = await MatchedDonor.find({ bloodRequestId }).sort({ matchedAt: -1 });
+    return donors.map(d => d.toObject());
   }
 
   // Search blood requests
-  static search(params) {
-    let query = `SELECT * FROM blood_requests WHERE 1=1`;
-    const conditions = [];
-    const queryParams = [];
+  static async search(params) {
+    const query = {};
 
     if (params.bloodType) {
-      conditions.push(`bloodType = ?`);
-      queryParams.push(params.bloodType);
+        query.bloodType = params.bloodType;
     }
 
     if (params.urgency) {
-      conditions.push(`urgency = ?`);
-      queryParams.push(params.urgency);
+        query.urgency = params.urgency;
     }
 
     if (params.status) {
-      conditions.push(`status = ?`);
-      queryParams.push(params.status);
+        query.status = params.status;
     }
 
     if (params.city) {
-      conditions.push(`hospitalAddress LIKE ?`);
-      queryParams.push(`%${params.city}%`);
+        // Regex search on hospitalAddress
+        query.hospitalAddress = new RegExp(params.city, 'i');
     }
 
     if (params.requesterId) {
-      conditions.push(`requesterId = ?`);
-      queryParams.push(params.requesterId);
+        query.requesterId = params.requesterId;
     }
 
-    if (conditions.length > 0) {
-      query += ` AND (${conditions.join(' AND ')})`;
-    }
+    // Use aggregation for sorting by urgency
+    const requests = await BloodRequest.aggregate([
+        { $match: query },
+        {
+            $addFields: {
+                urgencyWeight: {
+                    $switch: {
+                        branches: [
+                            { case: { $eq: ["$urgency", "high"] }, then: 1 },
+                            { case: { $eq: ["$urgency", "medium"] }, then: 2 },
+                            { case: { $eq: ["$urgency", "low"] }, then: 3 }
+                        ],
+                        default: 4
+                    }
+                }
+            }
+        },
+        { $sort: { urgencyWeight: 1, createdAt: -1 } }
+    ]);
 
-    query += ` ORDER BY 
-      CASE urgency 
-        WHEN 'high' THEN 1 
-        WHEN 'medium' THEN 2 
-        WHEN 'low' THEN 3 
-      END,
-      createdAt DESC`;
-
-    const requests = db.prepare(query).all(...queryParams);
-
-    return requests.map(request => ({
-      ...request,
-      matchedDonors: this.getMatchedDonors(request.id)
+    return Promise.all(requests.map(async request => {
+        const donors = await this.getMatchedDonors(request._id);
+        return {
+            ...request,
+            matchedDonors: donors
+        };
     }));
   }
 
   // Get blood request statistics
-  static getStats() {
-    const stats = db.prepare(`
-      SELECT 
-        COUNT(*) as total,
-        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
-        COUNT(CASE WHEN status = 'matched' THEN 1 END) as matched,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
-        COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
-        COUNT(CASE WHEN urgency = 'high' THEN 1 END) as highUrgency,
-        COUNT(CASE WHEN urgency = 'medium' THEN 1 END) as mediumUrgency,
-        COUNT(CASE WHEN urgency = 'low' THEN 1 END) as lowUrgency
-      FROM blood_requests
-    `).get();
+  static async getStats() {
+    const stats = await BloodRequest.aggregate([
+        {
+            $group: {
+                _id: null,
+                total: { $sum: 1 },
+                pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
+                matched: { $sum: { $cond: [{ $eq: ["$status", "matched"] }, 1, 0] } },
+                completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
+                cancelled: { $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] } },
+                highUrgency: { $sum: { $cond: [{ $eq: ["$urgency", "high"] }, 1, 0] } },
+                mediumUrgency: { $sum: { $cond: [{ $eq: ["$urgency", "medium"] }, 1, 0] } },
+                lowUrgency: { $sum: { $cond: [{ $eq: ["$urgency", "low"] }, 1, 0] } }
+            }
+        }
+    ]);
 
-    return {
-      total: stats.total,
-      pending: stats.pending,
-      matched: stats.matched,
-      completed: stats.completed,
-      cancelled: stats.cancelled,
-      highUrgency: stats.highUrgency,
-      mediumUrgency: stats.mediumUrgency,
-      lowUrgency: stats.lowUrgency
-    };
+    if (!stats || stats.length === 0) {
+        return {
+          total: 0,
+          pending: 0,
+          matched: 0,
+          completed: 0,
+          cancelled: 0,
+          highUrgency: 0,
+          mediumUrgency: 0,
+          lowUrgency: 0
+        };
+    }
+
+    return stats[0];
   }
 
   // Get blood type statistics
-  static getBloodTypeStats() {
-    const stats = db.prepare(`
-      SELECT 
-        bloodType,
-        COUNT(*) as count,
-        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
-        COUNT(CASE WHEN status = 'matched' THEN 1 END) as matched,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
-      FROM blood_requests
-      GROUP BY bloodType
-      ORDER BY count DESC
-    `).all();
+  static async getBloodTypeStats() {
+    const stats = await BloodRequest.aggregate([
+        {
+            $group: {
+                _id: "$bloodType",
+                count: { $sum: 1 },
+                pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
+                matched: { $sum: { $cond: [{ $eq: ["$status", "matched"] }, 1, 0] } },
+                completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } }
+            }
+        },
+        { $sort: { count: -1 } }
+    ]);
 
-    return stats;
+    return stats.map(s => ({
+        bloodType: s._id,
+        count: s.count,
+        pending: s.pending,
+        matched: s.matched,
+        completed: s.completed
+    }));
   }
 
   // Delete blood request
-  static delete(id) {
+  static async delete(id) {
     // Delete matched donors first
-    db.prepare('DELETE FROM matched_donors WHERE bloodRequestId = ?').run(id);
+    await MatchedDonor.deleteMany({ bloodRequestId: id });
     
     // Delete the request
-    return db.prepare('DELETE FROM blood_requests WHERE id = ?').run(id);
+    return BloodRequest.findByIdAndDelete(id);
   }
 }
 
-module.exports = BloodRequestService; 
+module.exports = BloodRequestService;

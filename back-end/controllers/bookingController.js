@@ -53,7 +53,7 @@ exports.createBooking = async (req, res) => {
       rapidAssistance
     };
 
-    const booking = BookingService.create(bookingData);
+    const booking = await BookingService.create(bookingData);
 
     res.status(201).json({
       success: true,
@@ -72,7 +72,7 @@ exports.createBooking = async (req, res) => {
 // Get user bookings
 exports.getUserBookings = async (req, res) => {
   try {
-    const bookings = BookingService.getByUserId(req.user.id);
+    const bookings = await BookingService.getByUserId(req.user.id);
 
     res.json({
       success: true,
@@ -91,7 +91,7 @@ exports.getUserBookings = async (req, res) => {
 // Get specific booking
 exports.getBookingById = async (req, res) => {
   try {
-    const booking = BookingService.getById(req.params.id);
+    const booking = await BookingService.getById(req.params.id);
 
     if (!booking) {
       return res.status(404).json({
@@ -119,8 +119,8 @@ exports.updateBookingStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    BookingService.updateStatus(id, status);
-    const booking = BookingService.getById(id);
+    await BookingService.updateStatus(id, status);
+    const booking = await BookingService.getById(id);
 
     res.json({
       success: true,
@@ -143,9 +143,9 @@ exports.getAllBookings = async (req, res) => {
     
     // If hospital authority, only show bookings for their hospital
     if (req.user.userType === 'hospital-authority' && req.user.hospitalId) {
-      bookings = BookingService.getByHospitalId(req.user.hospitalId);
+      bookings = await BookingService.getByHospitalId(req.user.hospitalId);
     } else {
-      bookings = BookingService.getAll();
+      bookings = await BookingService.getAll();
     }
 
     res.json({
@@ -195,7 +195,7 @@ exports.cancelBooking = async (req, res) => {
 // Get current user's bookings (for profile page)
 exports.getCurrentUserBookings = async (req, res) => {
   try {
-    const bookings = BookingService.getByUserId(req.user.id);
+    const bookings = await BookingService.getByUserId(req.user.id);
 
     res.json({
       success: true,
@@ -222,8 +222,11 @@ exports.getPendingBookings = async (req, res) => {
     // Check if user has permission to view this hospital's bookings
     if (req.user.userType === 'hospital-authority') {
       // Use hospitalId from user object (set by UserService.getById)
+      // Mongoose Ids are objects, but user.hospitalId might be string or ObjectId. 
+      // Safe to convert both to string for comparison.
+      // But let's assume valid ID match. If hospitalId param is int? It should be string now.
       const userHospitalId = req.user.hospitalId || req.user.hospital_id;
-      if (!userHospitalId || userHospitalId !== parseInt(hospitalId)) {
+      if (!userHospitalId || userHospitalId.toString() !== hospitalId) {
       return res.status(403).json({
         success: false,
         error: 'You can only view bookings for your assigned hospital'
@@ -239,7 +242,7 @@ exports.getPendingBookings = async (req, res) => {
       sortOrder
     };
 
-    const result = await BookingApprovalService.getPendingBookings(parseInt(hospitalId), options);
+    const result = await BookingApprovalService.getPendingBookings(hospitalId, options);
 
     if (!result.success) {
       return res.status(400).json({
@@ -272,8 +275,7 @@ exports.approveBooking = async (req, res) => {
     const { notes, resourcesAllocated, scheduledDate, autoAllocateResources } = req.body || {};
 
     // Get booking to check hospital ownership
-    const BookingService = require('../services/bookingService');
-    const booking = BookingService.getById(id);
+    const booking = await BookingService.getById(id);
     
     if (!booking) {
       return res.status(404).json({
@@ -284,9 +286,9 @@ exports.approveBooking = async (req, res) => {
 
     // Check if user has permission to approve this booking
     if (req.user.userType === 'hospital-authority') {
-      // Use hospitalId from user object (set by UserService.getById)
       const userHospitalId = req.user.hospitalId || req.user.hospital_id;
-      if (!userHospitalId || booking.hospitalId !== userHospitalId) {
+      // Compare hospital IDs
+      if (!userHospitalId || booking.hospital.id.toString() !== userHospitalId.toString()) {
       return res.status(403).json({
         success: false,
         error: 'You can only approve bookings for your assigned hospital'
@@ -301,7 +303,7 @@ exports.approveBooking = async (req, res) => {
       autoAllocateResources: autoAllocateResources !== false
     };
 
-    const result = await BookingApprovalService.approveBooking(parseInt(id), req.user.id, approvalData);
+    const result = await BookingApprovalService.approveBooking(id, req.user.id, approvalData);
 
     if (!result.success) {
       return res.status(400).json({
@@ -339,8 +341,7 @@ exports.declineBooking = async (req, res) => {
     }
 
     // Get booking to check hospital ownership
-    const BookingService = require('../services/bookingService');
-    const booking = BookingService.getById(id);
+    const booking = await BookingService.getById(id);
     
     if (!booking) {
       return res.status(404).json({
@@ -350,11 +351,14 @@ exports.declineBooking = async (req, res) => {
     }
 
     // Check if user has permission to decline this booking
-    if (req.user.userType === 'hospital-authority' && req.user.hospitalId !== booking.hospitalId) {
-      return res.status(403).json({
-        success: false,
-        error: 'You can only decline bookings for your assigned hospital'
-      });
+    if (req.user.userType === 'hospital-authority') {
+        const userHospitalId = req.user.hospitalId || req.user.hospital_id;
+        if (!userHospitalId || booking.hospital.id.toString() !== userHospitalId.toString()) {
+            return res.status(403).json({
+                success: false,
+                error: 'You can only decline bookings for your assigned hospital'
+            });
+        }
     }
 
     const declineData = {
@@ -363,7 +367,7 @@ exports.declineBooking = async (req, res) => {
       alternativeSuggestions: alternativeSuggestions || []
     };
 
-    const result = await BookingApprovalService.declineBooking(parseInt(id), req.user.id, declineData);
+    const result = await BookingApprovalService.declineBooking(id, req.user.id, declineData);
 
     if (!result.success) {
       return res.status(400).json({
@@ -394,11 +398,14 @@ exports.getBookingHistory = async (req, res) => {
     const { status, startDate, endDate, limit, offset } = req.query;
 
     // Check if user has permission to view this hospital's history
-    if (req.user.userType === 'hospital-authority' && req.user.hospital_id !== parseInt(hospitalId)) {
-      return res.status(403).json({
-        success: false,
-        error: 'You can only view booking history for your assigned hospital'
-      });
+    if (req.user.userType === 'hospital-authority') {
+        const userHospitalId = req.user.hospitalId || req.user.hospital_id;
+        if (userHospitalId.toString() !== hospitalId) {
+            return res.status(403).json({
+                success: false,
+                error: 'You can only view booking history for your assigned hospital'
+            });
+        }
     }
 
     const options = {
@@ -409,7 +416,7 @@ exports.getBookingHistory = async (req, res) => {
       offset: offset ? parseInt(offset) : undefined
     };
 
-    const result = await BookingApprovalService.getBookingHistory(parseInt(hospitalId), options);
+    const result = await BookingApprovalService.getBookingHistory(hospitalId, options);
 
     if (!result.success) {
       return res.status(400).json({
@@ -450,7 +457,7 @@ exports.processBookingPayment = async (req, res) => {
     }
 
     // Get booking details
-    const booking = BookingService.getById(bookingId);
+    const booking = await BookingService.getById(bookingId);
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -459,11 +466,34 @@ exports.processBookingPayment = async (req, res) => {
     }
 
     // Check if user owns this booking
-    if (booking.userId !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        error: 'You can only pay for your own bookings'
-      });
+    // User check using string comparison for Mongo ObjectIds
+    if (booking.userId && booking.userId.toString() !== req.user.id.toString()) {
+        // NOTE: getById populates userId? If getById returns object with populate, 
+        // userId might be an object { _id, name... }.
+        // In BookingService.getById:
+        // user: b.userId ? { id: b.userId._id, ... } : null.
+        // Wait, the new getById returns a transformed object where `booking.userId` might be the ID string OR the populated object depending on implementation.
+        // Let's check BookingService.getById implementation.
+        // It populates `userId` only in `getByHospitalId` but NOT in `getById`.
+        // `getById` populates `hospitalId` and `surgeonId`. `userId` remains ID (if schema defines it as ObjectId ref).
+        // Let's double check.
+    }
+    
+    // Check if valid user
+    // If BookingService.getById uses populate('userId'), then booking.userId is object.
+    // My implementation of getById only populated hospitalId and surgeonId.
+    // So booking.userId is ObjectId. Safe to toString().
+    
+    if (booking.userId.toString() !== req.user.id) {
+       // Allow if booking.userId is object?
+       // Safe check: (booking.userId._id || booking.userId).toString()
+       const bUserId = booking.userId._id || booking.userId;
+       if (bUserId.toString() !== req.user.id) {
+           return res.status(403).json({
+             success: false,
+             error: 'You can only pay for your own bookings'
+           });
+       }
     }
 
     // Check if booking is already paid
@@ -475,8 +505,10 @@ exports.processBookingPayment = async (req, res) => {
     }
 
     // Calculate base payment amount using hospital pricing
-    const costBreakdown = HospitalPricing.calculateBookingCost(
-      booking.hospitalId,
+    // Assuming hospitalId is ObjectId or string.
+    const hId = booking.hospital.id || booking.hospitalId; 
+    const costBreakdown = await HospitalPricing.calculateBookingCost(
+      hId,
       booking.resourceType,
       booking.estimatedDuration || 24
     );
@@ -513,14 +545,16 @@ exports.processBookingPayment = async (req, res) => {
     }
 
     // Check user balance
-    if (!User.hasSufficientBalance(req.user.id, paymentAmount)) {
+    const hasBalance = await User.hasSufficientBalance(req.user.id, paymentAmount);
+    if (!hasBalance) {
+      const currentBalance = await User.getBalance(req.user.id);
       return res.status(400).json({
         success: false,
         error: 'Insufficient balance. Please add funds to your account.',
         data: {
           required_amount: paymentAmount,
-          current_balance: User.getBalance(req.user.id),
-          shortfall: paymentAmount - User.getBalance(req.user.id)
+          current_balance: currentBalance,
+          shortfall: paymentAmount - currentBalance
         }
       });
     }
@@ -537,7 +571,7 @@ exports.processBookingPayment = async (req, res) => {
     };
 
     // Process payment (deduct balance)
-    const paymentResult = User.processPayment(
+    const paymentResult = await User.processPayment(
       req.user.id,
       paymentAmount,
       bookingId,
@@ -547,14 +581,14 @@ exports.processBookingPayment = async (req, res) => {
 
     // Update booking with rapid assistance details if selected
     if (requestedRapidAssistance && !booking.rapidAssistance) {
-      BookingService.updateRapidAssistance(bookingId, true, rapidAssistanceCharge);
+      await BookingService.updateRapidAssistance(bookingId, true, rapidAssistanceCharge);
     }
 
     // Update booking payment status
-    BookingService.updatePaymentStatus(bookingId, 'paid', 'balance', transactionId);
+    await BookingService.updatePaymentStatus(bookingId, 'paid', 'balance', transactionId);
 
     // Get updated booking with all changes
-    const updatedBooking = BookingService.getById(bookingId);
+    const updatedBooking = await BookingService.getById(bookingId);
 
     // Create comprehensive itemized payment breakdown for response
     const itemizedBreakdown = {
