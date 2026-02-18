@@ -1,7 +1,8 @@
-const db = require('../config/database');
 const Hospital = require('../models/Hospital');
 const Booking = require('../models/Booking');
+const HospitalResource = require('../models/HospitalResource');
 const ResourceAuditLog = require('../models/ResourceAuditLog');
+const mongoose = require('mongoose');
 
 /**
  * PollingService
@@ -17,51 +18,35 @@ class PollingService {
    * @param {Array} resourceTypes - Array of resource types to filter
    * @returns {Object} Resource updates with change detection
    */
-  static getResourceUpdates(hospitalId = null, lastUpdate = null, resourceTypes = null) {
+  static async getResourceUpdates(hospitalId = null, lastUpdate = null, resourceTypes = null) {
     try {
-      let query = `
-        SELECT 
-          hr.hospitalId,
-          hr.resourceType,
-          hr.total,
-          hr.available,
-          hr.occupied,
-          hr.reserved,
-          hr.maintenance,
-          hr.lastUpdated,
-          hr.updatedBy,
-          h.name as hospitalName
-        FROM hospital_resources hr
-        INNER JOIN hospitals h ON hr.hospitalId = h.id
-        WHERE h.isActive = 1
-      `;
-      
-      const params = [];
-      
-      // Filter by hospital if specified
-      if (hospitalId) {
-        query += ' AND hr.hospitalId = ?';
-        params.push(hospitalId);
-      }
+      const query = {};
       
       // Filter by timestamp if specified
       if (lastUpdate) {
-        query += ' AND hr.lastUpdated > ?';
-        params.push(lastUpdate);
+        query.lastUpdated = { $gt: new Date(lastUpdate) };
       }
-      
+
       // Filter by resource types if specified
       if (resourceTypes && resourceTypes.length > 0) {
-        const placeholders = resourceTypes.map(() => '?').join(',');
-        query += ` AND hr.resourceType IN (${placeholders})`;
-        params.push(...resourceTypes);
+        query.resourceType = { $in: resourceTypes };
       }
-      
-      query += ' ORDER BY hr.lastUpdated DESC';
-      
-      const stmt = db.prepare(query);
-      const resources = stmt.all(...params);
-      
+
+      // Filter by hospital if specified (convert to ObjectId)
+      if (hospitalId) {
+        query.hospitalId = new mongoose.Types.ObjectId(hospitalId);
+      } else {
+        // If no hospitalId, we need to ensure we only get resources for active hospitals
+        // This requires a lookup or separate query. Use separate query for efficiency.
+        const activeHospitals = await Hospital.find({ isActive: true }).select('_id');
+        const activeHospitalIds = activeHospitals.map(h => h._id);
+        query.hospitalId = { $in: activeHospitalIds };
+      }
+
+      const resources = await HospitalResource.find(query)
+        .populate('hospitalId', 'name')
+        .sort({ lastUpdated: -1 });
+
       // Get current timestamp for next polling
       const currentTimestamp = new Date().toISOString();
       
@@ -71,16 +56,19 @@ class PollingService {
       const changesByResourceType = {};
       
       resources.forEach(resource => {
+        const hospId = resource.hospitalId._id.toString();
+        const hospName = resource.hospitalId.name;
+
         // Group by hospital
-        if (!changesByHospital[resource.hospitalId]) {
-          changesByHospital[resource.hospitalId] = {
-            hospitalId: resource.hospitalId,
-            hospitalName: resource.hospitalName,
+        if (!changesByHospital[hospId]) {
+          changesByHospital[hospId] = {
+            hospitalId: hospId,
+            hospitalName: hospName,
             resources: [],
             lastUpdated: resource.lastUpdated
           };
         }
-        changesByHospital[resource.hospitalId].resources.push({
+        changesByHospital[hospId].resources.push({
           resourceType: resource.resourceType,
           total: resource.total,
           available: resource.available,
@@ -96,8 +84,8 @@ class PollingService {
           changesByResourceType[resource.resourceType] = [];
         }
         changesByResourceType[resource.resourceType].push({
-          hospitalId: resource.hospitalId,
-          hospitalName: resource.hospitalName,
+          hospitalId: hospId,
+          hospitalName: hospName,
           total: resource.total,
           available: resource.available,
           occupied: resource.occupied,
@@ -123,6 +111,7 @@ class PollingService {
       };
       
     } catch (error) {
+      console.error('Error in getResourceUpdates:', error);
       return {
         success: false,
         message: error.message,
@@ -138,60 +127,36 @@ class PollingService {
    * @param {Array} statuses - Array of statuses to filter
    * @returns {Object} Booking updates with change detection
    */
-  static getBookingUpdates(hospitalId = null, lastUpdate = null, statuses = null) {
+  static async getBookingUpdates(hospitalId = null, lastUpdate = null, statuses = null) {
     try {
-      let query = `
-        SELECT 
-          b.id,
-          b.userId,
-          b.hospitalId,
-          b.resourceType,
-          b.patientName,
-          b.urgency,
-          b.status,
-          b.approvedBy,
-          b.approvedAt,
-          b.declineReason,
-          b.authorityNotes,
-          b.resourcesAllocated,
-          b.updatedAt,
-          b.createdAt,
-          h.name as hospitalName,
-          u.name as userName,
-          approver.name as approverName
-        FROM bookings b
-        INNER JOIN hospitals h ON b.hospitalId = h.id
-        LEFT JOIN users u ON b.userId = u.id
-        LEFT JOIN users approver ON b.approvedBy = approver.id
-        WHERE h.isActive = 1
-      `;
-      
-      const params = [];
-      
-      // Filter by hospital if specified
-      if (hospitalId) {
-        query += ' AND b.hospitalId = ?';
-        params.push(hospitalId);
-      }
+      const query = {};
       
       // Filter by timestamp if specified
       if (lastUpdate) {
-        query += ' AND b.updatedAt > ?';
-        params.push(lastUpdate);
+        query.updatedAt = { $gt: new Date(lastUpdate) };
       }
-      
+
       // Filter by statuses if specified
       if (statuses && statuses.length > 0) {
-        const placeholders = statuses.map(() => '?').join(',');
-        query += ` AND b.status IN (${placeholders})`;
-        params.push(...statuses);
+        query.status = { $in: statuses };
       }
       
-      query += ' ORDER BY b.updatedAt DESC';
-      
-      const stmt = db.prepare(query);
-      const bookings = stmt.all(...params);
-      
+      // Filter by hospital if specified
+      if (hospitalId) {
+         query.hospitalId = new mongoose.Types.ObjectId(hospitalId);
+      } else {
+        // Only active hospitals
+        const activeHospitals = await Hospital.find({ isActive: true }).select('_id');
+        const activeHospitalIds = activeHospitals.map(h => h._id);
+        query.hospitalId = { $in: activeHospitalIds };
+      }
+
+      const bookings = await Booking.find(query)
+          .populate('hospitalId', 'name')
+          .populate('userId', 'name')
+          .populate('approvedBy', 'name')
+          .sort({ updatedAt: -1 });
+
       // Get current timestamp for next polling
       const currentTimestamp = new Date().toISOString();
       
@@ -202,27 +167,38 @@ class PollingService {
       const changesByUrgency = {};
       
       bookings.forEach(booking => {
+        // Determine hospital ID/Name safely (in case population fails)
+        const hospId = booking.hospitalId ? booking.hospitalId._id.toString() : 'unknown';
+        const hospName = booking.hospitalId ? booking.hospitalId.name : 'Unknown Hospital';
+        const userName = booking.userId ? booking.userId.name : 'Unknown User';
+        const approverName = booking.approvedBy ? booking.approvedBy.name : null;
+
+        const bookingObj = booking.toObject();
+        bookingObj.hospitalName = hospName;
+        bookingObj.userName = userName;
+        bookingObj.approverName = approverName;
+
         // Group by hospital
-        if (!changesByHospital[booking.hospitalId]) {
-          changesByHospital[booking.hospitalId] = {
-            hospitalId: booking.hospitalId,
-            hospitalName: booking.hospitalName,
+        if (!changesByHospital[hospId]) {
+          changesByHospital[hospId] = {
+            hospitalId: hospId,
+            hospitalName: hospName,
             bookings: []
           };
         }
-        changesByHospital[booking.hospitalId].bookings.push(booking);
+        changesByHospital[hospId].bookings.push(bookingObj);
         
         // Group by status
         if (!changesByStatus[booking.status]) {
           changesByStatus[booking.status] = [];
         }
-        changesByStatus[booking.status].push(booking);
+        changesByStatus[booking.status].push(bookingObj);
         
         // Group by urgency
         if (!changesByUrgency[booking.urgency]) {
           changesByUrgency[booking.urgency] = [];
         }
-        changesByUrgency[booking.urgency].push(booking);
+        changesByUrgency[booking.urgency].push(bookingObj);
       });
       
       return {
@@ -236,12 +212,13 @@ class PollingService {
             byHospital: Object.values(changesByHospital),
             byStatus: changesByStatus,
             byUrgency: changesByUrgency,
-            raw: bookings
+            raw: bookings // note: returns mongoose documents or POJOs if mapped
           }
         }
       };
       
     } catch (error) {
+       console.error('Error in getBookingUpdates:', error);
       return {
         success: false,
         message: error.message,
@@ -257,19 +234,12 @@ class PollingService {
    * @param {Object} options - Additional filtering options
    * @returns {Object} Combined updates with change detection
    */
-  static getCombinedUpdates(hospitalId = null, lastUpdate = null, options = {}) {
+  static async getCombinedUpdates(hospitalId = null, lastUpdate = null, options = {}) {
     try {
-      const resourceUpdates = this.getResourceUpdates(
-        hospitalId, 
-        lastUpdate, 
-        options.resourceTypes
-      );
-      
-      const bookingUpdates = this.getBookingUpdates(
-        hospitalId, 
-        lastUpdate, 
-        options.bookingStatuses
-      );
+      const [resourceUpdates, bookingUpdates] = await Promise.all([
+        this.getResourceUpdates(hospitalId, lastUpdate, options.resourceTypes),
+        this.getBookingUpdates(hospitalId, lastUpdate, options.bookingStatuses)
+      ]);
       
       if (!resourceUpdates.success || !bookingUpdates.success) {
         throw new Error('Failed to fetch updates');
@@ -310,67 +280,57 @@ class PollingService {
    * @param {Object} options - Additional filtering options
    * @returns {Object} Audit log updates
    */
-  static getAuditLogUpdates(hospitalId = null, lastUpdate = null, options = {}) {
+  static async getAuditLogUpdates(hospitalId = null, lastUpdate = null, options = {}) {
     try {
-      let query = `
-        SELECT 
-          ral.*,
-          h.name as hospitalName,
-          u.name as changedByName
-        FROM resource_audit_log ral
-        INNER JOIN hospitals h ON ral.hospitalId = h.id
-        LEFT JOIN users u ON ral.changedBy = u.id
-        WHERE h.isActive = 1
-      `;
-      
-      const params = [];
-      
-      // Filter by hospital if specified
-      if (hospitalId) {
-        query += ' AND ral.hospitalId = ?';
-        params.push(hospitalId);
-      }
-      
-      // Filter by timestamp if specified
+      const query = {};
+
       if (lastUpdate) {
-        query += ' AND ral.timestamp > ?';
-        params.push(lastUpdate);
+        query.timestamp = { $gt: new Date(lastUpdate) };
       }
       
-      // Filter by change type if specified
+      if (hospitalId) {
+        query.hospitalId = new mongoose.Types.ObjectId(hospitalId);
+      } else {
+         const activeHospitals = await Hospital.find({ isActive: true }).select('_id');
+         query.hospitalId = { $in: activeHospitals.map(h => h._id) };
+      }
+
       if (options.changeTypes && options.changeTypes.length > 0) {
-        const placeholders = options.changeTypes.map(() => '?').join(',');
-        query += ` AND ral.changeType IN (${placeholders})`;
-        params.push(...options.changeTypes);
+        query.changeType = { $in: options.changeTypes };
       }
       
-      // Filter by resource type if specified
       if (options.resourceTypes && options.resourceTypes.length > 0) {
-        const placeholders = options.resourceTypes.map(() => '?').join(',');
-        query += ` AND ral.resourceType IN (${placeholders})`;
-        params.push(...options.resourceTypes);
+        query.resourceType = { $in: options.resourceTypes };
       }
       
-      query += ' ORDER BY ral.timestamp DESC';
+      const limit = options.limit ? parseInt(options.limit) : 0;
       
-      if (options.limit) {
-        query += ' LIMIT ?';
-        params.push(options.limit);
+      const auditLogQuery = ResourceAuditLog.find(query)
+          .populate('hospitalId', 'name')
+          .populate('changedBy', 'name')
+          .sort({ timestamp: -1 });
+          
+      if (limit > 0) {
+          auditLogQuery.limit(limit);
       }
       
-      const stmt = db.prepare(query);
-      const auditLogs = stmt.all(...params);
+      const auditLogs = await auditLogQuery.exec();
       
       const currentTimestamp = new Date().toISOString();
       const hasChanges = auditLogs.length > 0;
       
       // Group by change type for analysis
       const changesByType = {};
-      auditLogs.forEach(log => {
-        if (!changesByType[log.changeType]) {
-          changesByType[log.changeType] = [];
-        }
-        changesByType[log.changeType].push(log);
+      const enhancedLogs = auditLogs.map(log => {
+          const l = log.toObject();
+          l.hospitalName = log.hospitalId ? log.hospitalId.name : 'Unknown';
+          l.changedByName = log.changedBy ? log.changedBy.name : 'Unknown';
+          
+          if (!changesByType[log.changeType]) {
+            changesByType[log.changeType] = [];
+          }
+          changesByType[log.changeType].push(l);
+          return l;
       });
       
       return {
@@ -382,7 +342,7 @@ class PollingService {
           lastPolled: lastUpdate,
           changes: {
             byType: changesByType,
-            raw: auditLogs
+            raw: enhancedLogs
           }
         }
       };
@@ -403,51 +363,76 @@ class PollingService {
    * @param {Object} options - Additional options
    * @returns {Object} Hospital dashboard updates
    */
-  static getHospitalDashboardUpdates(hospitalId, lastUpdate = null, options = {}) {
+  static async getHospitalDashboardUpdates(hospitalId, lastUpdate = null, options = {}) {
     try {
       if (!hospitalId) {
         throw new Error('Hospital ID is required');
       }
       
       // Get combined updates for this hospital
-      const combinedUpdates = this.getCombinedUpdates(hospitalId, lastUpdate, options);
+      const combinedUpdates = await this.getCombinedUpdates(hospitalId, lastUpdate, options);
       
       if (!combinedUpdates.success) {
         throw new Error('Failed to fetch hospital updates');
       }
       
-      // Get current resource status
-      const currentResources = Hospital.getResources(hospitalId);
-      const resourceUtilization = Hospital.getResourceUtilization(hospitalId);
+      // Get current resource status (Using Hospital.getWithResources logic or simpler find)
+      // Hospital.getResources is likely not implemented as static.
+      // We can fetch hospital and its resources manually.
+      const hospitalResources = await HospitalResource.find({ hospitalId: hospitalId });
+      const currentResources = {};
+      hospitalResources.forEach(r => {
+          currentResources[r.resourceType] = {
+              total: r.total,
+              available: r.available,
+              occupied: r.occupied
+          };
+      });
+      
+      // Resource utilization
+      const resourceUtilization = {}; // Calculate from currentResources
+      for(const type in currentResources) {
+          const res = currentResources[type];
+          resourceUtilization[type] = res.total > 0 ? (res.occupied / res.total) * 100 : 0;
+      }
       
       // Get pending bookings count
-      const pendingBookingsStmt = db.prepare(`
-        SELECT COUNT(*) as count FROM bookings 
-        WHERE hospitalId = ? AND status = 'pending'
-      `);
-      const pendingBookingsCount = pendingBookingsStmt.get(hospitalId).count;
+      const pendingBookingsCount = await Booking.countDocuments({ 
+          hospitalId: hospitalId, 
+          status: 'pending' 
+      });
       
-      // Get recent activity summary
-      const recentActivityStmt = db.prepare(`
-        SELECT 
-          'booking' as type,
-          status as subtype,
-          COUNT(*) as count,
-          MAX(updatedAt) as lastActivity
-        FROM bookings 
-        WHERE hospitalId = ? AND updatedAt > datetime('now', '-1 hour')
-        GROUP BY status
-        UNION ALL
-        SELECT 
-          'resource' as type,
-          changeType as subtype,
-          COUNT(*) as count,
-          MAX(timestamp) as lastActivity
-        FROM resource_audit_log 
-        WHERE hospitalId = ? AND timestamp > datetime('now', '-1 hour')
-        GROUP BY changeType
-      `);
-      const recentActivity = recentActivityStmt.all(hospitalId, hospitalId);
+      // Get recent activity summary (Aggregation)
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      
+      const recentBookingActivity = await Booking.aggregate([
+          { $match: { 
+              hospitalId: new mongoose.Types.ObjectId(hospitalId), 
+              updatedAt: { $gt: oneHourAgo } 
+          }},
+          { $group: {
+              _id: "$status",
+              count: { $sum: 1 },
+              lastActivity: { $max: "$updatedAt" }
+          }}
+      ]);
+      
+      const recentResourceActivity = await ResourceAuditLog.aggregate([
+          { $match: { 
+              hospitalId: new mongoose.Types.ObjectId(hospitalId), 
+              timestamp: { $gt: oneHourAgo } 
+          }},
+          { $group: {
+              _id: "$changeType",
+              count: { $sum: 1 },
+              lastActivity: { $max: "$timestamp" }
+          }}
+      ]);
+
+      const formattedActivity = [
+          ...recentBookingActivity.map(a => ({ type: 'booking', subtype: a._id, count: a.count, lastActivity: a.lastActivity })),
+          ...recentResourceActivity.map(a => ({ type: 'resource', subtype: a._id, count: a.count, lastActivity: a.lastActivity }))
+      ];
       
       return {
         success: true,
@@ -457,13 +442,14 @@ class PollingService {
             currentResources,
             resourceUtilization,
             pendingBookingsCount,
-            recentActivity,
+            recentActivity: formattedActivity,
             lastUpdated: new Date().toISOString()
           }
         }
       };
       
     } catch (error) {
+      console.error('Error in getHospitalDashboardUpdates:', error);
       return {
         success: false,
         message: error.message,
@@ -478,7 +464,7 @@ class PollingService {
    * @param {string} lastUpdate - ISO timestamp of last update
    * @returns {Object} Change detection result
    */
-  static hasChanges(hospitalId = null, lastUpdate = null) {
+  static async hasChanges(hospitalId = null, lastUpdate = null) {
     try {
       if (!lastUpdate) {
         return {
@@ -490,37 +476,24 @@ class PollingService {
         };
       }
       
-      // Check for resource changes
-      let resourceQuery = `
-        SELECT COUNT(*) as count FROM hospital_resources hr
-        INNER JOIN hospitals h ON hr.hospitalId = h.id
-        WHERE h.isActive = 1 AND hr.lastUpdated > ?
-      `;
-      const resourceParams = [lastUpdate];
+      const rQuery = { lastUpdated: { $gt: new Date(lastUpdate) } };
+      const bQuery = { updatedAt: { $gt: new Date(lastUpdate) } };
       
       if (hospitalId) {
-        resourceQuery += ' AND hr.hospitalId = ?';
-        resourceParams.push(hospitalId);
+          const hId = new mongoose.Types.ObjectId(hospitalId);
+          rQuery.hospitalId = hId;
+          bQuery.hospitalId = hId;
+      } else {
+        const activeHospitals = await Hospital.find({ isActive: true }).select('_id');
+        const ids = activeHospitals.map(h => h._id);
+        rQuery.hospitalId = { $in: ids };
+        bQuery.hospitalId = { $in: ids };
       }
       
-      const resourceStmt = db.prepare(resourceQuery);
-      const resourceChanges = resourceStmt.get(...resourceParams).count;
-      
-      // Check for booking changes
-      let bookingQuery = `
-        SELECT COUNT(*) as count FROM bookings b
-        INNER JOIN hospitals h ON b.hospitalId = h.id
-        WHERE h.isActive = 1 AND b.updatedAt > ?
-      `;
-      const bookingParams = [lastUpdate];
-      
-      if (hospitalId) {
-        bookingQuery += ' AND b.hospitalId = ?';
-        bookingParams.push(hospitalId);
-      }
-      
-      const bookingStmt = db.prepare(bookingQuery);
-      const bookingChanges = bookingStmt.get(...bookingParams).count;
+      const [resourceChanges, bookingChanges] = await Promise.all([
+          HospitalResource.countDocuments(rQuery),
+          Booking.countDocuments(bQuery)
+      ]);
       
       const hasChanges = resourceChanges > 0 || bookingChanges > 0;
       
@@ -550,38 +523,40 @@ class PollingService {
    * @param {Object} options - Configuration options
    * @returns {Object} Polling configuration recommendations
    */
-  static getPollingConfig(hospitalId = null, options = {}) {
+  static async getPollingConfig(hospitalId = null, options = {}) {
     try {
-      // Analyze activity patterns to recommend polling intervals
-      let activityQuery = `
-        SELECT 
-          COUNT(*) as totalChanges,
-          AVG(julianday('now') - julianday(hr.lastUpdated)) * 24 * 60 as avgMinutesSinceUpdate,
-          MIN(hr.lastUpdated) as oldestUpdate,
-          MAX(hr.lastUpdated) as newestUpdate
-        FROM hospital_resources hr
-        INNER JOIN hospitals h ON hr.hospitalId = h.id
-        WHERE h.isActive = 1
-      `;
+      // Analyze activity patterns
+      const match = hospitalId ? { hospitalId: new mongoose.Types.ObjectId(hospitalId) } : {};
       
-      const params = [];
-      if (hospitalId) {
-        activityQuery += ' AND hr.hospitalId = ?';
-        params.push(hospitalId);
-      }
+      // This is a simplified "last update" check across all resources to guess activity
+      // A proper avgMinutesSinceUpdate requires a history log analysis which might be heavy.
+      // Let's us ResourceAuditLog instead? Or just HospitalResource lastUpdated stats.
       
-      const stmt = db.prepare(activityQuery);
-      const activity = stmt.get(...params);
+      // Let's try to get average time since last update (current time - lastUpdated)
+      const aggregation = await HospitalResource.aggregate([
+          { $match: match },
+          { $group: {
+              _id: null,
+              totalChanges: { $sum: 1 }, 
+              // Avg minutes since last update for *current state* (not strictly freq, but proxy)
+              avgGap: { $avg: { $subtract: [new Date(), "$lastUpdated"] } },
+              oldestUpdate: { $min: "$lastUpdated" },
+              newestUpdate: { $max: "$lastUpdated" }
+          }}
+      ]);
       
+      let activity = aggregation[0];
+      let avgMinutesSinceUpdate = activity ? activity.avgGap / (1000 * 60) : null;
+
       // Recommend polling interval based on activity
       let recommendedInterval = 30000; // Default 30 seconds
       
-      if (activity && activity.avgMinutesSinceUpdate !== null) {
-        if (activity.avgMinutesSinceUpdate < 5) {
+      if (avgMinutesSinceUpdate !== null) {
+        if (avgMinutesSinceUpdate < 5) {
           recommendedInterval = 10000; // High activity: 10 seconds
-        } else if (activity.avgMinutesSinceUpdate < 15) {
+        } else if (avgMinutesSinceUpdate < 15) {
           recommendedInterval = 20000; // Medium activity: 20 seconds
-        } else if (activity.avgMinutesSinceUpdate > 60) {
+        } else if (avgMinutesSinceUpdate > 60) {
           recommendedInterval = 60000; // Low activity: 1 minute
         }
       }
@@ -590,7 +565,12 @@ class PollingService {
         success: true,
         data: {
           recommendedInterval,
-          activityAnalysis: activity,
+          activityAnalysis: {
+             totalChanges: activity ? activity.totalChanges : 0,
+             avgMinutesSinceUpdate,
+             oldestUpdate: activity ? activity.oldestUpdate : null,
+             newestUpdate: activity ? activity.newestUpdate : null
+          },
           configuration: {
             minInterval: 5000,   // Minimum 5 seconds
             maxInterval: 300000, // Maximum 5 minutes

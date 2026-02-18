@@ -1,4 +1,7 @@
-const db = require('../config/database');
+const mongoose = require('mongoose');
+const connectDB = require('../config/database');
+const Hospital = require('../models/Hospital');
+const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
@@ -10,10 +13,15 @@ const path = require('path');
 
 const assignHospitalCredentials = async () => {
   try {
+    // Ensure DB connection
+    if (mongoose.connection.readyState === 0) {
+        await connectDB();
+    }
+
     console.log('Starting hospital credential assignment...\n');
 
     // Get all hospitals
-    const hospitals = db.prepare('SELECT id, name, email, phone FROM hospitals').all();
+    const hospitals = await Hospital.find({}, 'name email phone');
     
     if (hospitals.length === 0) {
       console.log('No hospitals found in the database.');
@@ -27,9 +35,6 @@ const assignHospitalCredentials = async () => {
     for (const hospital of hospitals) {
       try {
         // Generate consistent email/username
-        // If hospital has an email, use it. Otherwise generate one.
-        // Actually, for easy credentials, let's try to stick to hospital email if valid, or a generated one.
-        
         let email = hospital.email;
         if (!email || !email.includes('@')) {
             const cleanName = hospital.name
@@ -43,48 +48,50 @@ const assignHospitalCredentials = async () => {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // Check if user already exists for this hospital
-        const existingUser = db.prepare(
-          'SELECT id, email FROM users WHERE hospital_id = ? AND userType = ?'
-        ).get(hospital.id, 'hospital-authority');
+        const existingUser = await User.findOne({ 
+            $or: [
+                { hospital_id: hospital._id, userType: 'hospital-authority' },
+                { email: email } 
+            ]
+        });
 
         let userId;
 
         if (existingUser) {
           // Update existing user
-          // Keep existing email if it's already set (unless we want to force standardization)
-          // To ensure "easy to remember", let's force the email we determined above.
+          existingUser.email = email;
+          existingUser.password = hashedPassword;
+          existingUser.name = `${hospital.name} Admin`;
+          existingUser.phone = hospital.phone;
+          existingUser.hospital_id = hospital._id; // Ensure link
+          existingUser.userType = 'hospital-authority';
+          existingUser.can_add_hospital = true;
+          existingUser.isActive = true;
           
-          db.prepare(`
-            UPDATE users 
-            SET email = ?, password = ?, name = ?, phone = ?, updatedAt = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).run(email, hashedPassword, `${hospital.name} Admin`, hospital.phone, existingUser.id);
+          await existingUser.save();
           
-          userId = existingUser.id;
+          userId = existingUser._id;
           console.log(`✓ Updated credentials for: ${hospital.name} (${email})`);
         } else {
           // Create new user
-          const result = db.prepare(`
-            INSERT INTO users (email, password, name, phone, userType, hospital_id, can_add_hospital, isActive)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
+          const newUser = await User.create({
             email,
-            hashedPassword,
-            `${hospital.name} Admin`,
-            hospital.phone || '+880-1700-000000',
-            'hospital-authority',
-            hospital.id,
-            1,
-            1
-          );
+            password: hashedPassword,
+            name: `${hospital.name} Admin`,
+            phone: hospital.phone || '+880-1700-000000',
+            userType: 'hospital-authority',
+            hospital_id: hospital._id,
+            can_add_hospital: true,
+            isActive: true
+          });
 
-          userId = result.lastInsertRowid;
+          userId = newUser._id;
           console.log(`✓ Created new account for: ${hospital.name} (${email})`);
         }
 
         // Store credentials for output
         results.push({
-          hospitalId: hospital.id,
+          hospitalId: hospital._id,
           hospitalName: hospital.name,
           username: email,
           password: password,

@@ -151,7 +151,7 @@ export default function BloodDonationPage() {
     setIsDetailsDialogOpen(true);
   };
 
-  const handleDonateBlood = (requestId: number) => {
+  const handleDonateBlood = (requestId: number | string) => {
     // Remove the card from the list
     setBloodRequests(bloodRequests.filter(request => request.id !== requestId));
   };

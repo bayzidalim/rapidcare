@@ -1,128 +1,87 @@
-const db = require('./config/database');
+const mongoose = require('mongoose');
+const HospitalPricing = require('./models/HospitalPricing');
+const PaymentConfig = require('./models/PaymentConfig');
+const connectDB = require('./config/database');
 
 /**
  * Update all hospital pricing to 5x the current values
  */
 
-const updatePricing5x = () => {
+const updatePricing5x = async () => {
   console.log('💰 Updating hospital pricing to 5x...');
 
   try {
-    // Begin transaction
-    db.exec('BEGIN TRANSACTION');
+    await connectDB();
 
-    // Update hospital_pricing table
-    const currentPricing = db.prepare('SELECT * FROM hospital_pricing').all();
+    // Update HospitalPricing
+    const currentPricing = await HospitalPricing.find();
     
     if (currentPricing.length === 0) {
-      console.log('⚠️  No pricing records found in hospital_pricing table.');
+      console.log('⚠️  No pricing records found in HospitalPricing collection.');
     } else {
-      console.log(`📊 Found ${currentPricing.length} pricing records in hospital_pricing to update`);
+      console.log(`📊 Found ${currentPricing.length} pricing records to update`);
 
-    // Update each pricing record
-    const updateStmt = db.prepare(`
-      UPDATE hospital_pricing 
-      SET baseRate = ?,
-          hourlyRate = ?,
-          minimumCharge = ?,
-          maximumCharge = ?,
-          updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
+      let updatedCount = 0;
+      for (const pricing of currentPricing) {
+        const newBaseRate = pricing.baseRate * 5;
+        const newHourlyRate = pricing.hourlyRate ? pricing.hourlyRate * 5 : undefined;
+        const newMinimumCharge = pricing.minimumCharge ? pricing.minimumCharge * 5 : undefined;
+        const newMaximumCharge = pricing.maximumCharge ? pricing.maximumCharge * 5 : undefined;
 
-    let updatedCount = 0;
-    currentPricing.forEach(pricing => {
-      const newBaseRate = pricing.baseRate * 5;
-      const newHourlyRate = pricing.hourlyRate ? pricing.hourlyRate * 5 : null;
-      const newMinimumCharge = pricing.minimumCharge ? pricing.minimumCharge * 5 : null;
-      const newMaximumCharge = pricing.maximumCharge ? pricing.maximumCharge * 5 : null;
+        pricing.baseRate = newBaseRate;
+        if (newHourlyRate !== undefined) pricing.hourlyRate = newHourlyRate;
+        if (newMinimumCharge !== undefined) pricing.minimumCharge = newMinimumCharge;
+        if (newMaximumCharge !== undefined) pricing.maximumCharge = newMaximumCharge;
+        
+        await pricing.save();
 
-      updateStmt.run(
-        newBaseRate,
-        newHourlyRate,
-        newMinimumCharge,
-        newMaximumCharge,
-        pricing.id
-      );
-
-      console.log(`   ✓ Hospital ${pricing.hospitalId} - ${pricing.resourceType}:`);
-      console.log(`     Base Rate: ${pricing.baseRate} → ${newBaseRate}`);
-      if (newHourlyRate) {
-        console.log(`     Hourly Rate: ${pricing.hourlyRate} → ${newHourlyRate}`);
+        console.log(`   ✓ Hospital ${pricing.hospitalId} - ${pricing.resourceType}:`);
+        console.log(`     Base Rate: ${newBaseRate/5} → ${newBaseRate}`);
+        updatedCount++;
       }
       
-      updatedCount++;
-    });
+      console.log(`   - Updated ${updatedCount} pricing records`);
     }
 
-    // Update simple_hospital_pricing table
-    const simplePricing = db.prepare('SELECT * FROM simple_hospital_pricing').all();
-    
-    if (simplePricing.length > 0) {
-      console.log(`\n📊 Found ${simplePricing.length} pricing records in simple_hospital_pricing to update`);
-      
-      const updateSimpleStmt = db.prepare(`
-        UPDATE simple_hospital_pricing 
-        SET base_price = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `);
-
-      simplePricing.forEach(pricing => {
-        const newBasePrice = pricing.base_price * 5;
-        updateSimpleStmt.run(newBasePrice, pricing.id);
-        console.log(`   ✓ Hospital ${pricing.hospital_id} - ${pricing.resource_type}: ${pricing.base_price} → ${newBasePrice}`);
-      });
-    }
-
-    // Update payment config minimum booking amounts
-    const paymentConfigs = db.prepare('SELECT * FROM payment_config').all();
+    // Update PaymentConfig
+    const paymentConfigs = await PaymentConfig.find();
     
     if (paymentConfigs.length > 0) {
       console.log(`\n⚙️  Updating ${paymentConfigs.length} payment configurations...`);
       
-      const updateConfigStmt = db.prepare(`
-        UPDATE payment_config 
-        SET minimumBookingAmount = ?,
-            updatedAt = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `);
-
-      paymentConfigs.forEach(config => {
-        const newMinimum = config.minimumBookingAmount * 5;
-        updateConfigStmt.run(newMinimum, config.id);
-        console.log(`   ✓ Hospital ${config.hospitalId}: Minimum ${config.minimumBookingAmount} → ${newMinimum}`);
-      });
+      for (const config of paymentConfigs) {
+        const newMinimum = (config.minimumBookingAmount || 200) * 5;
+        
+        config.minimumBookingAmount = newMinimum;
+        await config.save();
+        
+        console.log(`   ✓ Hospital ${config.hospitalId}: Minimum ${(newMinimum/5)} → ${newMinimum}`);
+      }
     }
 
-    // Commit transaction
-    db.exec('COMMIT');
-
     console.log('\n✅ Pricing update completed successfully!');
-    console.log(`   - Updated ${updatedCount} pricing records`);
     console.log(`   - All prices increased by 5x`);
-    console.log(`   - Updated ${paymentConfigs.length} payment configurations`);
 
-    // Show summary of new pricing
+    // Show summary
     console.log('\n📊 New Pricing Summary:');
-    const summary = db.prepare(`
-      SELECT 
-        resourceType,
-        AVG(baseRate) as avgBaseRate,
-        MIN(baseRate) as minBaseRate,
-        MAX(baseRate) as maxBaseRate
-      FROM hospital_pricing
-      GROUP BY resourceType
-    `).all();
+    const summary = await HospitalPricing.aggregate([
+      {
+        $group: {
+          _id: '$resourceType',
+          avgBaseRate: { $avg: '$baseRate' },
+          minBaseRate: { $min: '$baseRate' },
+          maxBaseRate: { $max: '$baseRate' }
+        }
+      }
+    ]);
 
     summary.forEach(row => {
-      console.log(`   ${row.resourceType}:`);
+      console.log(`   ${row._id}:`);
       console.log(`     Average: $${row.avgBaseRate.toFixed(2)}`);
       console.log(`     Range: $${row.minBaseRate.toFixed(2)} - $${row.maxBaseRate.toFixed(2)}`);
     });
 
   } catch (error) {
-    db.exec('ROLLBACK');
     console.error('❌ Pricing update failed:', error.message);
     throw error;
   }
@@ -130,8 +89,15 @@ const updatePricing5x = () => {
 
 // Run update if called directly
 if (require.main === module) {
-  updatePricing5x();
-  console.log('\n✨ Pricing update completed!');
+  updatePricing5x()
+    .then(() => {
+        console.log('\n✨ Pricing update completed!');
+        process.exit(0);
+    })
+    .catch(err => {
+        console.error(err);
+        process.exit(1);
+    });
 }
 
 module.exports = { updatePricing5x };

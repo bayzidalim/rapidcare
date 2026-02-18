@@ -1,4 +1,5 @@
 const NotificationService = require('../services/notificationService');
+const connectDB = require('../config/database');
 
 /**
  * Background notification processor
@@ -21,6 +22,13 @@ async function processNotificationQueue(options = {}) {
     continuous = false,
     priority = null
   } = options;
+
+  try {
+      if (options.shouldConnect !== false) {
+         await connectDB();
+      }
+  } catch(e) { console.error("DB Connect error", e); }
+
 
   console.log('🔔 Starting notification processor...');
   console.log(`📊 Configuration: batchSize=${batchSize}, interval=${intervalMs}ms, continuous=${continuous}`);
@@ -45,7 +53,8 @@ async function processNotificationQueue(options = {}) {
             });
           }
         } else {
-          console.log('📭 No notifications to process');
+          // Silent if empty to avoid log spam in continuous mode, or log sparsely
+          // console.log('📭 No notifications to process');
         }
       } else {
         console.error('❌ Failed to process notification queue:', result.message);
@@ -88,36 +97,9 @@ async function processNotificationQueue(options = {}) {
  */
 async function getQueueStatistics() {
   try {
-    const db = require('../config/database');
-    
-    const stats = db.prepare(`
-      SELECT 
-        status,
-        priority,
-        channel,
-        COUNT(*) as count,
-        MIN(createdAt) as oldest,
-        MAX(createdAt) as newest
-      FROM notification_queue 
-      GROUP BY status, priority, channel
-      ORDER BY status, priority DESC, channel
-    `).all();
-
-    const summary = db.prepare(`
-      SELECT 
-        COUNT(*) as total,
-        SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) as queued,
-        SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing,
-        SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered,
-        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-        SUM(CASE WHEN retryCount > 0 THEN 1 ELSE 0 END) as retried
-      FROM notification_queue
-    `).get();
-
-    return {
-      summary,
-      breakdown: stats
-    };
+    await connectDB();
+    const stats = await NotificationService.getQueueStatistics();
+    return stats;
   } catch (error) {
     console.error('Error getting queue statistics:', error);
     return null;
@@ -131,27 +113,11 @@ async function getQueueStatistics() {
  * @param {boolean} options.onlyDelivered - Only remove delivered notifications
  */
 async function cleanupOldNotifications(options = {}) {
-  const {
-    olderThanDays = 30,
-    onlyDelivered = true
-  } = options;
-
   try {
-    const db = require('../config/database');
-    
-    let query = `
-      DELETE FROM notification_queue 
-      WHERE createdAt < datetime('now', '-${olderThanDays} days')
-    `;
-    
-    if (onlyDelivered) {
-      query += " AND status = 'delivered'";
-    }
-
-    const result = db.prepare(query).run();
-    
-    console.log(`🧹 Cleaned up ${result.changes} old notifications (older than ${olderThanDays} days)`);
-    return result.changes;
+     await connectDB();
+     const count = await NotificationService.cleanupOldNotifications(options);
+     console.log(`🧹 Cleaned up ${count} old notifications`);
+     return count;
   } catch (error) {
     console.error('Error cleaning up old notifications:', error);
     return 0;
@@ -173,7 +139,8 @@ if (require.main === module) {
         batchSize,
         continuous,
         priority,
-        intervalMs: 5000
+        intervalMs: 5000,
+        shouldConnect: true
       }).catch(console.error);
       break;
     }
@@ -185,8 +152,9 @@ if (require.main === module) {
           console.log('Summary:', stats.summary);
           console.log('\nBreakdown:');
           console.table(stats.breakdown);
+          process.exit(0);
         }
-      }).catch(console.error);
+      }).catch(err => { console.error(err); process.exit(1); });
       break;
     }
 
@@ -195,7 +163,8 @@ if (require.main === module) {
       const onlyDelivered = !args.includes('--all');
       
       cleanupOldNotifications({ olderThanDays: days, onlyDelivered })
-        .catch(console.error);
+        .then(() => process.exit(0))
+        .catch(err => { console.error(err); process.exit(1); });
       break;
     }
 

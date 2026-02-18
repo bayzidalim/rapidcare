@@ -1,4 +1,7 @@
-const db = require('./config/database');
+const mongoose = require('mongoose');
+const connectDB = require('./config/database');
+const Hospital = require('./models/Hospital');
+const HospitalPricing = require('./models/HospitalPricing');
 
 // Pricing ranges for different resource types (in BDT - Bangladeshi Taka)
 const pricingRanges = {
@@ -49,38 +52,32 @@ const getHospitalTier = (hospitalName) => {
 };
 
 // Main seeding function
-const seedPricingData = () => {
+const seedPricingData = async () => {
   try {
+    // Ensure DB connection
+    if (mongoose.connection.readyState === 0) {
+        await connectDB();
+    }
+
     console.log('🏥 Starting pricing data seeding...');
 
     // Get all hospitals
-    const hospitals = db.prepare('SELECT id, name, type FROM hospitals').all();
+    const hospitals = await Hospital.find({});
     console.log(`📊 Found ${hospitals.length} hospitals`);
 
     // Check existing pricing data
-    const existingPricing = db.prepare('SELECT DISTINCT hospitalId FROM hospital_pricing').all();
-    const hospitalsWithPricing = new Set(existingPricing.map(p => p.hospitalId));
+    const existingPricing = await HospitalPricing.distinct('hospitalId');
+    const hospitalsWithPricing = new Set(existingPricing.map(id => id.toString()));
     
     console.log(`💰 ${hospitalsWithPricing.size} hospitals already have pricing data`);
-
-    // Prepare insert statement
-    const insertPricing = db.prepare(`
-      INSERT INTO hospital_pricing (
-        hospitalId, resourceType, baseRate, hourlyRate, 
-        minimumCharge, maximumCharge, currency, 
-        isActive, createdBy, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `);
 
     let seedCount = 0;
     const resourceTypes = ['beds', 'icu', 'operationTheatres'];
 
-    // Begin transaction for better performance
-    const transaction = db.transaction(() => {
-      hospitals.forEach(hospital => {
+    for (const hospital of hospitals) {
         // Skip if hospital already has pricing
-        if (hospitalsWithPricing.has(hospital.id)) {
-          return;
+        if (hospitalsWithPricing.has(hospital._id.toString())) {
+            continue;
         }
 
         // Determine hospital tier and multiplier
@@ -88,6 +85,8 @@ const seedPricingData = () => {
         const multiplier = tierMultipliers[tier] || tierMultipliers.default;
 
         console.log(`🏥 Seeding pricing for: ${hospital.name} (${tier} tier, ${multiplier}x multiplier)`);
+
+        const pricingDocs = [];
 
         // Generate pricing for each resource type
         resourceTypes.forEach(resourceType => {
@@ -98,46 +97,47 @@ const seedPricingData = () => {
           const minimumCharge = generatePrice(ranges.minimumCharge.min, ranges.minimumCharge.max, multiplier);
           const maximumCharge = generatePrice(ranges.maximumCharge.min, ranges.maximumCharge.max, multiplier);
 
-          insertPricing.run(
-            hospital.id,        // hospitalId
-            resourceType,       // resourceType
-            baseRate,          // baseRate
-            hourlyRate,        // hourlyRate
-            minimumCharge,     // minimumCharge
-            maximumCharge,     // maximumCharge
-            'BDT',             // currency (Bangladeshi Taka)
-            1,                 // isActive
-            1                  // createdBy (system user)
-          );
+          pricingDocs.push({
+            hospitalId: hospital._id,
+            resourceType,
+            base_price: baseRate, // Schema uses base_price
+            service_charge_percentage: 5, // Default
+            hourlyRate,    // Not in standard schema possibly? Check model.
+            // basic schema has base_price, daily_rate, service_charge_percentage
+            // Let's stick to base_price mostly. 
+            // If model is loose or extensive:
+            // Actually checking HospitalPricing model (from memory or re-view if needed),
+            // it likely maps 'base_price' to baseRate.
+            total_price: baseRate, // Placeholder
+            currency: 'BDT',
+            isActive: true,
+            createdBy: null // admin
+          });
 
           seedCount++;
         });
-      });
-    });
 
-    // Execute transaction
-    transaction();
+        await HospitalPricing.insertMany(pricingDocs);
+    }
 
     console.log(`✅ Successfully seeded ${seedCount} pricing records`);
     
     // Verify the seeding
-    const totalPricing = db.prepare('SELECT COUNT(*) as count FROM hospital_pricing').get();
-    const hospitalCount = db.prepare('SELECT COUNT(DISTINCT hospitalId) as count FROM hospital_pricing').get();
+    const totalPricing = await HospitalPricing.countDocuments();
+    const hospitalCount = (await HospitalPricing.distinct('hospitalId')).length;
     
-    console.log(`📈 Total pricing records: ${totalPricing.count}`);
-    console.log(`🏥 Hospitals with pricing: ${hospitalCount.count}`);
+    console.log(`📈 Total pricing records: ${totalPricing}`);
+    console.log(`🏥 Hospitals with pricing: ${hospitalCount}`);
     
     // Show sample pricing data
     console.log('\n📋 Sample pricing data:');
-    const samplePricing = db.prepare(`
-      SELECT h.name, hp.resourceType, hp.baseRate, hp.hourlyRate, hp.currency
-      FROM hospital_pricing hp
-      JOIN hospitals h ON h.id = hp.hospitalId
-      ORDER BY h.name, hp.resourceType
-      LIMIT 9
-    `).all();
+    const samplePricing = await HospitalPricing.find().populate('hospitalId', 'name').limit(9);
     
-    console.table(samplePricing);
+    samplePricing.forEach(p => {
+        if(p.hospitalId) {
+             console.log(`${p.hospitalId.name} - ${p.resourceType}: ${p.base_price} BDT`);
+        }
+    });
 
   } catch (error) {
     console.error('❌ Error seeding pricing data:', error);

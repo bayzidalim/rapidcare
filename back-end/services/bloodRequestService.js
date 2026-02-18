@@ -211,6 +211,7 @@ class BloodRequestService {
         const donors = await this.getMatchedDonors(request._id);
         return {
             ...request,
+            id: request._id, // Ensure id is present for frontend
             matchedDonors: donors
         };
     }));

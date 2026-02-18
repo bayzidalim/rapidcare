@@ -1,29 +1,17 @@
-const db = require('../config/database');
+const User = require('../models/User');
+const Hospital = require('../models/Hospital');
+const UserService = require('./userService');
 
 class HospitalAuthorityValidationService {
   /**
    * Validate all hospital authority users and fix any linking issues
    * @returns {Object} Validation results with fixes applied
    */
-  static validateAndFixAll() {
+  static async validateAndFixAll() {
     try {
       console.log('Starting hospital authority validation...');
       
-      // Get all hospital authority users with their linking status
-      const query = `
-        SELECT 
-          u.id as userId,
-          u.email,
-          u.userType,
-          u.hospital_id as userHospitalId,
-          ha.hospitalId as authorityHospitalId,
-          ha.id as authorityId
-        FROM users u
-        LEFT JOIN hospital_authorities ha ON u.id = ha.userId
-        WHERE u.userType = 'hospital-authority'
-      `;
-      
-      const users = db.prepare(query).all();
+      const users = await User.find({ userType: 'hospital-authority' });
       const results = {
         total: users.length,
         fixed: 0,
@@ -32,7 +20,7 @@ class HospitalAuthorityValidationService {
       };
       
       for (const user of users) {
-        const userResult = this.validateAndFixUser(user);
+        const userResult = await this.validateAndFixUser(user);
         results.details.push(userResult);
         
         if (userResult.fixed) {
@@ -58,12 +46,12 @@ class HospitalAuthorityValidationService {
   
   /**
    * Validate and fix a single hospital authority user
-   * @param {Object} user - User data from database
+   * @param {Object} user - User document
    * @returns {Object} Validation result for this user
    */
-  static validateAndFixUser(user) {
+  static async validateAndFixUser(user) {
     const result = {
-      userId: user.userId,
+      userId: user._id,
       email: user.email,
       status: 'OK',
       fixed: false,
@@ -71,73 +59,51 @@ class HospitalAuthorityValidationService {
     };
     
     try {
-      // Case 1: User has no hospital_authorities record
-      if (!user.authorityId) {
-        console.log(`Creating hospital_authorities record for user ${user.email}`);
-        
-        const stmt = db.prepare(`
-          INSERT INTO hospital_authorities (userId, hospitalId, role, permissions, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `);
-        
-        stmt.run(
-          user.userId,
-          user.userHospitalId,
-          'staff',
-          JSON.stringify(['view_hospital', 'update_resources']),
-          new Date().toISOString(),
-          new Date().toISOString()
-        );
-        
-        result.status = 'CREATED_AUTHORITY_RECORD';
-        result.fixed = true;
-        return result;
+      let needsSave = false;
+      let updates = [];
+
+      // Case 1: User has 'hospital-authority' type but no hospital_id
+      // But maybe they are pending assignment? 
+      // If checks strict requirement:
+      if (!user.hospital_id) {
+          // If they intend to add a hospital later, this is fine.
+          // But usually authority implies existing hospital link or pending one.
+          // If we can't fix it (don't know which hospital), we flag it.
+          // Or if we know from other sources? No.
+          // Only fix if permissions/role missing.
+          result.status = 'NO_HOSPITAL_ASSIGNED';
+          // Not an error per se, but state.
+      } else {
+           // Validate Hospital existence
+           const hospital = await Hospital.findById(user.hospital_id);
+           if (!hospital) {
+               result.status = 'INVALID_HOSPITAL_LINK';
+               result.error = `Hospital ${user.hospital_id} does not exist`;
+               // Could remove link?
+               // user.hospital_id = null; needsSave = true;
+           }
+      }
+
+      // Fix missing role/permissions
+      if (!user.hospitalRole) {
+          user.hospitalRole = 'staff'; // Default
+          needsSave = true;
+          updates.push('SET_DEFAULT_ROLE');
+      }
+
+      // Fix missing permissions
+      if (!user.permissions || user.permissions.length === 0) {
+          user.permissions = UserService.getPermissionsForRole(user.hospitalRole || 'staff');
+          needsSave = true;
+          updates.push('SET_DEFAULT_PERMISSIONS');
       }
       
-      // Case 2: hospital_authorities.hospitalId is null but users.hospital_id is not
-      if (user.authorityHospitalId === null && user.userHospitalId !== null) {
-        console.log(`Fixing null hospitalId for user ${user.email}`);
-        
-        const stmt = db.prepare(`
-          UPDATE hospital_authorities 
-          SET hospitalId = ?
-          WHERE userId = ?
-        `);
-        
-        stmt.run(user.userHospitalId, user.userId);
-        
-        result.status = 'FIXED_NULL_HOSPITAL_ID';
-        result.fixed = true;
-        return result;
+      if (needsSave) {
+          await user.save();
+          result.fixed = true;
+          result.status = `FIXED: ${updates.join(', ')}`;
       }
       
-      // Case 3: Mismatch between users.hospital_id and hospital_authorities.hospitalId
-      if (user.userHospitalId !== user.authorityHospitalId) {
-        console.log(`Fixing mismatch for user ${user.email}: user=${user.userHospitalId}, authority=${user.authorityHospitalId}`);
-        
-        // Use the users.hospital_id as the source of truth
-        const stmt = db.prepare(`
-          UPDATE hospital_authorities 
-          SET hospitalId = ?
-          WHERE userId = ?
-        `);
-        
-        stmt.run(user.userHospitalId, user.userId);
-        
-        result.status = 'FIXED_MISMATCH';
-        result.fixed = true;
-        return result;
-      }
-      
-      // Case 4: Both are null - this is a problem
-      if (user.userHospitalId === null && user.authorityHospitalId === null) {
-        result.status = 'NO_HOSPITAL_ASSIGNED';
-        result.error = `User ${user.email} has no hospital assigned`;
-        return result;
-      }
-      
-      // Case 5: Everything is OK
-      result.status = 'OK';
       return result;
       
     } catch (error) {
@@ -150,28 +116,19 @@ class HospitalAuthorityValidationService {
    * Get validation status for all hospital authority users
    * @returns {Array} Array of validation status objects
    */
-  static getValidationStatus() {
+  static async getValidationStatus() {
     try {
-      const query = `
-        SELECT 
-          u.id as userId,
-          u.email,
-          u.userType,
-          u.hospital_id as userHospitalId,
-          ha.hospitalId as authorityHospitalId,
-          CASE 
-            WHEN u.hospital_id IS NULL THEN 'NO_HOSPITAL_IN_USER'
-            WHEN ha.hospitalId IS NULL THEN 'NO_HOSPITAL_IN_AUTHORITY'
-            WHEN u.hospital_id != ha.hospitalId THEN 'MISMATCH'
-            ELSE 'OK'
-          END as status
-        FROM users u
-        LEFT JOIN hospital_authorities ha ON u.id = ha.userId
-        WHERE u.userType = 'hospital-authority'
-      `;
-      
-      return db.prepare(query).all();
-      
+      const users = await User.find({ userType: 'hospital-authority' }).populate('hospital_id', 'name');
+      return users.map(u => ({
+          userId: u._id,
+          email: u.email,
+          userType: u.userType,
+          hospitalId: u.hospital_id ? u.hospital_id._id : null,
+          hospitalName: u.hospital_id ? u.hospital_id.name : null,
+          role: u.hospitalRole,
+          permissionsCount: u.permissions ? u.permissions.length : 0,
+          status: u.hospital_id ? 'OK' : 'NO_HOSPITAL_ASSIGNED'
+      }));
     } catch (error) {
       console.error('Error getting validation status:', error);
       return [];
@@ -180,40 +137,30 @@ class HospitalAuthorityValidationService {
   
   /**
    * Check if a specific user has proper hospital linking
-   * @param {number} userId - User ID to check
+   * @param {string} userId - User ID to check
    * @returns {Object} Validation result
    */
-  static validateUser(userId) {
+  static async validateUser(userId) {
     try {
-      const query = `
-        SELECT 
-          u.id as userId,
-          u.email,
-          u.userType,
-          u.hospital_id as userHospitalId,
-          ha.hospitalId as authorityHospitalId
-        FROM users u
-        LEFT JOIN hospital_authorities ha ON u.id = ha.userId
-        WHERE u.id = ? AND u.userType = 'hospital-authority'
-      `;
+      const user = await User.findById(userId).populate('hospital_id');
       
-      const user = db.prepare(query).get(userId);
-      
-      if (!user) {
+      if (!user || user.userType !== 'hospital-authority') {
         return {
           valid: false,
           error: 'User not found or not a hospital authority'
         };
       }
       
-      const isValid = user.userHospitalId !== null && 
-                     user.authorityHospitalId !== null && 
-                     user.userHospitalId === user.authorityHospitalId;
+      const isValid = !!user.hospital_id; // Simple check
       
       return {
         valid: isValid,
-        user: user,
-        status: isValid ? 'OK' : 'INVALID'
+        user: {
+            userId: user._id,
+            email: user.email,
+            hospitalId: user.hospital_id ? user.hospital_id._id : null
+        },
+        status: isValid ? 'OK' : 'NO_HOSPITAL_LINK'
       };
       
     } catch (error) {

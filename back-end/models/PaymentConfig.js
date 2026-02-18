@@ -39,6 +39,20 @@ paymentConfigSchema.statics.getConfigForHospital = async function(hospitalId) {
     return config;
 };
 
+// Calculate service charge
+paymentConfigSchema.statics.calculateServiceCharge = async function(amount, hospitalId) {
+    const config = await this.getConfigForHospital(hospitalId);
+    if (!config) return amount * 0.05; // Fallback default
+    return amount * (config.serviceChargeRate || 0.05);
+};
+
+// Calculate refund amount
+paymentConfigSchema.statics.calculateRefundAmount = async function(amount, hospitalId) {
+    const config = await this.getConfigForHospital(hospitalId);
+    if (!config) return amount * 0.80; // Fallback default
+    return amount * (config.refundPercentage || 0.80);
+};
+
 const PaymentConfig = mongoose.model('PaymentConfig', paymentConfigSchema);
 
 module.exports = PaymentConfig;

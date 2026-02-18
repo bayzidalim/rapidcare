@@ -1,16 +1,24 @@
-const db = require('./config/database');
+const mongoose = require('mongoose');
+const connectDB = require('./config/database');
 const Review = require('./models/Review');
+const Hospital = require('./models/Hospital');
+const User = require('./models/User');
 
-const seedDummyReviews = () => {
+const seedDummyReviews = async () => {
   try {
+     // Ensure DB connection
+     if (mongoose.connection.readyState === 0) {
+        await connectDB();
+    }
+
     console.log('🌱 Seeding dummy reviews...');
 
     // Get all hospitals
-    const hospitals = db.prepare('SELECT id, name FROM hospitals WHERE isActive = 1').all();
+    const hospitals = await Hospital.find({ isActive: true });
     console.log(`Found ${hospitals.length} hospitals`);
 
     // Get all users (excluding admin)
-    const users = db.prepare('SELECT id, name FROM users WHERE userType != ? AND isActive = 1').all('admin');
+    const users = await User.find({ userType: { $ne: 'admin' }, isActive: true });
     console.log(`Found ${users.length} users`);
 
     if (hospitals.length === 0 || users.length === 0) {
@@ -71,7 +79,9 @@ const seedDummyReviews = () => {
     const maxReviewsPerHospital = 15;
 
     // Generate reviews for each hospital
-    hospitals.forEach(hospital => {
+    const reviewsToInsert = [];
+
+    for (const hospital of hospitals) {
       const numReviews = Math.floor(Math.random() * maxReviewsPerHospital) + 5; // 5-20 reviews per hospital
       
       for (let i = 0; i < numReviews; i++) {
@@ -94,86 +104,70 @@ const seedDummyReviews = () => {
         // 30% chance of verified review (linked to booking)
         const isVerified = Math.random() < 0.3;
         
-        try {
-          const reviewId = Review.create({
-            userId: user.id,
-            hospitalId: hospital.id,
+        reviewsToInsert.push({
+            userId: user._id,
+            hospitalId: hospital._id,
             bookingId: null, // Don't link to bookings for now to avoid constraint issues
             rating: rating,
             title: title,
             comment: comment,
-            isVerified: 0, // Set to 0 to avoid booking constraint
-            isAnonymous: isAnonymous ? 1 : 0,
-            isActive: 1
-          });
-          
-          reviewCount++;
-          
-          // Add some helpful votes to random reviews
-          if (Math.random() < 0.3) {
-            const helpfulCount = Math.floor(Math.random() * 5) + 1; // 1-5 helpful votes
-            for (let j = 0; j < helpfulCount; j++) {
-              const voter = users[Math.floor(Math.random() * users.length)];
-              if (voter.id !== user.id) {
-                try {
-                  Review.addHelpfulVote(reviewId, voter.id, true);
-                } catch (voteError) {
-                  // Skip if vote already exists
-                }
-              }
-            }
-          }
-        } catch (error) {
-          console.log(`Skipped review for hospital ${hospital.id} due to constraint: ${error.message}`);
-        }
+            isVerified: false, // Set to false to avoid booking constraint
+            isAnonymous: isAnonymous,
+            isActive: true,
+            helpfulVotes: [] // Array of user IDs
+        });
       }
-    });
+    }
+
+    if(reviewsToInsert.length > 0) {
+        await Review.insertMany(reviewsToInsert);
+        reviewCount = reviewsToInsert.length;
+    }
 
     console.log(`✅ Seeded ${reviewCount} dummy reviews`);
 
     // Display some statistics
-    const stats = db.prepare(`
-      SELECT 
-        COUNT(*) as totalReviews,
-        AVG(rating) as averageRating,
-        COUNT(CASE WHEN rating = 5 THEN 1 END) as fiveStar,
-        COUNT(CASE WHEN rating = 4 THEN 1 END) as fourStar,
-        COUNT(CASE WHEN rating = 3 THEN 1 END) as threeStar,
-        COUNT(CASE WHEN rating = 2 THEN 1 END) as twoStar,
-        COUNT(CASE WHEN rating = 1 THEN 1 END) as oneStar
-      FROM reviews 
-      WHERE isActive = 1
-    `).get();
+    const stats = await Review.aggregate([
+        { $match: { isActive: true } },
+        { $group: {
+            _id: null,
+            totalReviews: { $sum: 1 },
+            averageRating: { $avg: "$rating" },
+            fiveStar: { $sum: { $cond: [{ $eq: ["$rating", 5] }, 1, 0] } },
+            fourStar: { $sum: { $cond: [{ $eq: ["$rating", 4] }, 1, 0] } },
+            threeStar: { $sum: { $cond: [{ $eq: ["$rating", 3] }, 1, 0] } },
+            twoStar: { $sum: { $cond: [{ $eq: ["$rating", 2] }, 1, 0] } },
+            oneStar: { $sum: { $cond: [{ $eq: ["$rating", 1] }, 1, 0] } }
+        }}
+    ]);
 
+    const stat = stats[0] || { totalReviews: 0 };
+    
     console.log('\n📊 Review Statistics:');
-    console.log(`Total Reviews: ${stats.totalReviews}`);
-    console.log(`Average Rating: ${stats.averageRating ? parseFloat(stats.averageRating.toFixed(2)) : 0}`);
-    console.log(`5 Stars: ${stats.fiveStar}`);
-    console.log(`4 Stars: ${stats.fourStar}`);
-    console.log(`3 Stars: ${stats.threeStar}`);
-    console.log(`2 Stars: ${stats.twoStar}`);
-    console.log(`1 Star: ${stats.oneStar}`);
+    console.log(`Total Reviews: ${stat.totalReviews}`);
+    console.log(`Average Rating: ${stat.averageRating ? parseFloat(stat.averageRating.toFixed(2)) : 0}`);
+    console.log(`5 Stars: ${stat.fiveStar}`);
+    console.log(`4 Stars: ${stat.fourStar}`);
+    console.log(`3 Stars: ${stat.threeStar}`);
+    console.log(`2 Stars: ${stat.twoStar}`);
+    console.log(`1 Star: ${stat.oneStar}`);
 
     // Show sample reviews
     console.log('\n📝 Sample Reviews:');
-    const sampleReviews = db.prepare(`
-      SELECT r.*, u.name as userName, h.name as hospitalName
-      FROM reviews r
-      LEFT JOIN users u ON r.userId = u.id
-      LEFT JOIN hospitals h ON r.hospitalId = h.id
-      WHERE r.isActive = 1
-      ORDER BY r.createdAt DESC
-      LIMIT 5
-    `).all();
+    const sampleReviews = await Review.find({ isActive: true })
+        .populate('userId', 'name')
+        .populate('hospitalId', 'name')
+        .sort({ createdAt: -1 })
+        .limit(5);
 
     sampleReviews.forEach((review, index) => {
-      console.log(`\n${index + 1}. ${review.hospitalName}`);
+      console.log(`\n${index + 1}. ${review.hospitalId ? review.hospitalId.name : 'Unknown Hospital'}`);
       console.log(`   Rating: ${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)} (${review.rating}/5)`);
       console.log(`   Title: ${review.title}`);
       console.log(`   Comment: ${review.comment}`);
-      console.log(`   By: ${review.isAnonymous ? 'Anonymous' : review.userName}`);
+      console.log(`   By: ${review.isAnonymous ? 'Anonymous' : (review.userId ? review.userId.name : 'Unknown User')}`);
       console.log(`   Verified: ${review.isVerified ? 'Yes' : 'No'}`);
-      console.log(`   Helpful: ${review.helpfulCount} votes`);
+      console.log(`   Helpful: ${review.helpfulVotes ? review.helpfulVotes.length : 0} votes`);
     });
 
   } catch (error) {

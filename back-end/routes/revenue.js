@@ -154,12 +154,11 @@ router.get('/balances/hospital/:id', authenticate, requireOwnHospital, async (re
     }
 
     // Get hospital authority user for this hospital
-    const db = require('../config/database');
-    const hospitalAuthority = db.prepare(`
-      SELECT id FROM users 
-      WHERE userType = 'hospital-authority' AND hospital_id = ? 
-      LIMIT 1
-    `).get(hospitalId);
+    const User = require('../models/User');
+    const hospitalAuthority = await User.findOne({ 
+        userType: 'hospital-authority', 
+        hospital_id: hospitalId 
+    });
 
     if (!hospitalAuthority) {
       return res.status(404).json({
@@ -169,8 +168,11 @@ router.get('/balances/hospital/:id', authenticate, requireOwnHospital, async (re
     }
 
     const UserBalance = require('../models/UserBalance');
-    const balance = UserBalance.findByUserId(hospitalAuthority.id, hospitalId);
-    const balanceHistory = UserBalance.getBalanceHistory(hospitalAuthority.id, hospitalId, 20);
+    const balance = await UserBalance.findByUserId(hospitalAuthority._id, hospitalId);
+    
+    // Use BalanceTransaction for history
+    const BalanceTransaction = require('../models/BalanceTransaction');
+    const balanceHistory = await BalanceTransaction.findByBalanceId(balance._id, 20);
 
     res.status(200).json({
       success: true,
@@ -197,12 +199,13 @@ router.get('/balances/hospital/:id', authenticate, requireOwnHospital, async (re
 router.get('/balances/admin', authenticate, requireAdmin, async (req, res) => {
   try {
     const UserBalance = require('../models/UserBalance');
-    const adminBalances = UserBalance.getAdminBalances();
+    const adminBalances = await UserBalance.getAdminBalances();
     
     // Get balance history for the first admin (or current admin)
     let balanceHistory = [];
     if (adminBalances.length > 0) {
-      balanceHistory = UserBalance.getBalanceHistory(adminBalances[0].userId, null, 20);
+      const BalanceTransaction = require('../models/BalanceTransaction');
+      balanceHistory = await BalanceTransaction.findByBalanceId(adminBalances[0]._id, 20);
     }
 
     res.status(200).json({

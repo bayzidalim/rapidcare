@@ -38,7 +38,8 @@ const hospitalResourceSchema = new mongoose.Schema({
     ref: 'User'
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  collection: 'hospital_resources' // Explicitly match SQL table name style for aggregations
 });
 
 // Composite unique index

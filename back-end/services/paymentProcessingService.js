@@ -5,7 +5,7 @@ const ValidationService = require('./validationService');
 const NotificationService = require('./notificationService');
 const ErrorHandler = require('../utils/errorHandler');
 const { formatTaka, parseTaka, isValidTakaAmount, roundTaka } = require('../utils/currencyUtils');
-// const db = require('../config/database'); // DB legacy import removed
+const mongoose = require('mongoose');
 
 // Security imports
 const securityUtils = require('../utils/securityUtils');
@@ -22,9 +22,6 @@ class PaymentProcessingService {
     const { ipAddress, userAgent, sessionId } = requestContext;
     
     try {
-      // Begin database transaction for atomicity
-      db.exec('BEGIN TRANSACTION');
-
       // Securely process payment data
       const secureDataResult = await securePaymentDataService.processPaymentData(
         paymentData, 
@@ -33,7 +30,6 @@ class PaymentProcessingService {
       );
 
       if (!secureDataResult.success) {
-        db.exec('ROLLBACK');
         return {
           success: false,
           error: 'Payment data processing failed',
@@ -44,9 +40,8 @@ class PaymentProcessingService {
       const processedPaymentData = secureDataResult.processedData;
 
       // Validate booking exists and is payable
-      const booking = Booking.findById(bookingId);
+      const booking = await Booking.findById(bookingId);
       if (!booking) {
-        db.exec('ROLLBACK');
         return ErrorHandler.createError('bkash', 'INVALID_TRANSACTION', {
           bookingId,
           reason: 'Booking not found'
@@ -54,7 +49,6 @@ class PaymentProcessingService {
       }
 
       if (booking.paymentStatus === 'paid') {
-        db.exec('ROLLBACK');
         return ErrorHandler.createError('bkash', 'DUPLICATE_TRANSACTION', {
           bookingId,
           transactionId: booking.transactionId
@@ -62,7 +56,6 @@ class PaymentProcessingService {
       }
 
       if (booking.status === 'cancelled') {
-        db.exec('ROLLBACK');
         return ErrorHandler.createError('bkash', 'INVALID_TRANSACTION', {
           bookingId,
           reason: 'Cannot pay for cancelled booking'
@@ -77,7 +70,6 @@ class PaymentProcessingService {
         // Use ValidationService for consistent rapid assistance validation
         const rapidAssistanceValidation = ValidationService.validateRapidAssistanceEligibility(booking.patientAge, rapidAssistance);
         if (!rapidAssistanceValidation.isValid) {
-          db.exec('ROLLBACK');
           return {
             success: false,
             error: rapidAssistanceValidation.errors[0]
@@ -93,7 +85,6 @@ class PaymentProcessingService {
       });
       
       if (!validation.isValid) {
-        db.exec('ROLLBACK');
         return {
           success: false,
           errors: validation.errors,
@@ -118,7 +109,6 @@ class PaymentProcessingService {
         // Handle fraud detection results
         switch (fraudAnalysis.analysis.recommendation.action) {
           case 'BLOCK':
-            db.exec('ROLLBACK');
             await auditService.logSecurityEvent({
               eventType: 'PAYMENT_BLOCKED_FRAUD',
               userId,
@@ -168,7 +158,6 @@ class PaymentProcessingService {
       });
 
       if (!amountValidation.isValid) {
-        db.exec('ROLLBACK');
         return {
           success: false,
           errors: amountValidation.errors,
@@ -179,11 +168,10 @@ class PaymentProcessingService {
       // Get payment configuration with error handling
       let config, serviceCharge, hospitalAmount;
       try {
-        config = PaymentConfig.getConfigForHospital(booking.hospitalId);
-        serviceCharge = PaymentConfig.calculateServiceCharge(amountValidation.sanitizedAmount, booking.hospitalId);
+        config = await PaymentConfig.getConfigForHospital(booking.hospitalId);
+        serviceCharge = await PaymentConfig.calculateServiceCharge(amountValidation.sanitizedAmount, booking.hospitalId);
         hospitalAmount = roundTaka(amountValidation.sanitizedAmount - serviceCharge);
       } catch (configError) {
-        db.exec('ROLLBACK');
         ErrorHandler.logError(configError, { bookingId, hospitalId: booking.hospitalId });
         return ErrorHandler.handleRevenueDistributionError(configError, {
           transactionId: null,
@@ -206,7 +194,7 @@ class PaymentProcessingService {
         paymentMethod: 'bkash',
         transactionId,
         status: 'pending',
-        paymentData: {
+        paymentData: JSON.stringify({
           mobileNumber: securityUtils.maskMobileNumber(paymentData.mobileNumber),
           paymentMethod: 'bkash',
           attemptCount,
@@ -216,10 +204,10 @@ class PaymentProcessingService {
           fraudFlags: fraudAnalysis.success ? fraudAnalysis.analysis.fraudFlags : [],
           rapidAssistance: rapidAssistance,
           rapidAssistanceAmount: rapidAssistance ? rapidAssistanceAmount : 0
-        }
+        })
       };
 
-      transaction = Transaction.create(transactionData);
+      transaction = await Transaction.create(transactionData);
 
       // Process payment through bKash simulation with comprehensive error handling
       const paymentResult = await this.processBkashPayment(
@@ -231,7 +219,7 @@ class PaymentProcessingService {
 
       if (paymentResult.success) {
         // Payment successful - confirm transaction
-        const confirmedTransaction = this.confirmBkashPayment(transaction.id, paymentResult.bkashTransactionId);
+        const confirmedTransaction = await this.confirmBkashPayment(transaction.id, paymentResult.bkashTransactionId);
         
         // Update booking payment status and add Rapid Assistance info if applicable
         const updatedBookingData = {
@@ -259,29 +247,12 @@ class PaymentProcessingService {
           updatedBookingData.rapidAssistance = true;
           updatedBookingData.rapidAssistantName = randomAssistant.name;
           updatedBookingData.rapidAssistantPhone = randomAssistant.phone;
+          updatedBookingData.rapidAssistanceCharge = rapidAssistanceAmount;
         }
         
-        Booking.updatePaymentStatus(bookingId, 'paid', 'bkash', transactionId);
+        // Use Booking.updatePaymentStatus or manual update
+        await Booking.findByIdAndUpdate(bookingId, updatedBookingData);
         
-        // Update booking with Rapid Assistance details
-        if (rapidAssistance) {
-          const updateStmt = db.prepare(`
-            UPDATE bookings 
-            SET rapidAssistance = ?, 
-                rapidAssistantName = ?, 
-                rapidAssistantPhone = ?,
-                rapidAssistanceCharge = ?
-            WHERE id = ?
-          `);
-          updateStmt.run(
-            updatedBookingData.rapidAssistance,
-            updatedBookingData.rapidAssistantName,
-            updatedBookingData.rapidAssistantPhone,
-            rapidAssistanceAmount,
-            bookingId
-          );
-        }
-
         // Log successful financial operation
         await auditService.logFinancialOperation({
           transactionId,
@@ -298,9 +269,6 @@ class PaymentProcessingService {
           riskScore: fraudAnalysis.success ? fraudAnalysis.analysis.riskScore : 0,
           fraudFlags: fraudAnalysis.success ? fraudAnalysis.analysis.fraudFlags : []
         });
-
-        // Commit database transaction
-        db.exec('COMMIT');
 
         // Send bKash-style payment confirmation notification (non-blocking)
         this.sendBkashConfirmationNotification(transaction.id, userId, booking, paymentResult)
@@ -348,8 +316,8 @@ class PaymentProcessingService {
             rapid_assistance: {
               requested: rapidAssistance,
               charge: rapidAssistanceAmount,
-              assistant_name: booking.rapidAssistantName,
-              assistant_phone: booking.rapidAssistantPhone
+              assistant_name: updatedBookingData.rapidAssistantName,
+              assistant_phone: updatedBookingData.rapidAssistantPhone
             }
           },
           message: 'bKash payment processed successfully',
@@ -359,7 +327,6 @@ class PaymentProcessingService {
         };
       } else {
         // Payment failed - handle with retry logic
-        db.exec('ROLLBACK');
         
         // Log failed financial operation
         await auditService.logFinancialOperation({
@@ -385,7 +352,7 @@ class PaymentProcessingService {
 
         // Update transaction status to failed
         if (transaction && transaction.id) {
-          this.handleBkashPaymentFailure(transaction.id, paymentResult.error, attemptCount);
+          await this.handleBkashPaymentFailure(transaction.id, paymentResult.error, attemptCount);
         }
 
         // Add retry information if applicable
@@ -403,13 +370,6 @@ class PaymentProcessingService {
       }
 
     } catch (error) {
-      // Rollback database transaction on any error
-      try {
-        db.exec('ROLLBACK');
-      } catch (rollbackError) {
-        ErrorHandler.logError(rollbackError, { context: 'transaction_rollback', originalError: error.message });
-      }
-
       // Log the error with context
       ErrorHandler.logError(error, { 
         bookingId, 
@@ -418,6 +378,13 @@ class PaymentProcessingService {
         transactionId: transaction?.id,
         context: 'payment_processing' 
       });
+
+      // Update Transaction to failed if it exists
+      if (transaction && transaction.id) {
+         try {
+             await Transaction.findByIdAndUpdate(transaction.id, { status: 'failed', failureReason: error.message });
+         } catch(e) { /* ignore */ }
+      }
 
       // Return structured error response
       return ErrorHandler.handleBkashPaymentError(error, attemptCount);
@@ -536,39 +503,61 @@ class PaymentProcessingService {
   /**
    * Confirm bKash payment and update transaction
    */
-  static confirmBkashPayment(transactionId, bkashTransactionId) {
+  static async confirmBkashPayment(transactionId, bkashTransactionId) {
     const processedAt = new Date().toISOString();
-    const transaction = Transaction.updateStatus(transactionId, 'completed', processedAt);
+    
+    // We update transaction manually using Mongoose
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) return null;
+    
+    transaction.status = 'completed';
+    transaction.processedAt = processedAt;
     
     // Update payment data with bKash transaction ID
-    if (transaction) {
-      const paymentData = JSON.parse(transaction.paymentData || '{}');
-      paymentData.bkashTransactionId = bkashTransactionId;
-      paymentData.confirmedAt = processedAt;
-      
-      // Update transaction with bKash details
-      Transaction.updatePaymentData(transactionId, JSON.stringify(paymentData));
+    if (transaction.paymentData) {
+       let paymentData = {};
+       try {
+           paymentData = JSON.parse(transaction.paymentData);
+       } catch(e) {
+           paymentData = transaction.paymentData;
+       }
+       
+       if (typeof paymentData === 'string') paymentData = JSON.parse(paymentData); // Safety
+       
+       paymentData.bkashTransactionId = bkashTransactionId;
+       paymentData.confirmedAt = processedAt;
+       
+       transaction.paymentData = JSON.stringify(paymentData);
     }
     
+    await transaction.save();
     return transaction;
   }
 
   /**
    * Handle bKash payment failure with retry tracking
    */
-  static handleBkashPaymentFailure(transactionId, errorReason, attemptCount) {
-    const transaction = Transaction.findById(transactionId);
+  static async handleBkashPaymentFailure(transactionId, errorReason, attemptCount) {
+    const transaction = await Transaction.findById(transactionId);
     if (transaction) {
       // Update transaction status to failed
-      Transaction.updateStatus(transactionId, 'failed');
+      transaction.status = 'failed';
       
       // Update payment data with failure details
-      const paymentData = JSON.parse(transaction.paymentData || '{}');
+      let paymentData = {};
+       try {
+           paymentData = JSON.parse(transaction.paymentData || '{}');
+       } catch(e) {
+           paymentData = transaction.paymentData || {};
+       }
+      
       paymentData.failureReason = errorReason;
       paymentData.attemptCount = attemptCount;
       paymentData.failedAt = new Date().toISOString();
       
-      Transaction.updatePaymentData(transactionId, JSON.stringify(paymentData));
+      transaction.paymentData = JSON.stringify(paymentData);
+      
+      await transaction.save();
       
       // Log the failure with context
       ErrorHandler.logError(new Error(errorReason), {
@@ -583,9 +572,6 @@ class PaymentProcessingService {
     return transaction;
   }
 
-  /**
-   * Send bKash-style confirmation notification
-   */
   /**
    * Send bKash-style confirmation notification
    */
@@ -604,11 +590,8 @@ class PaymentProcessingService {
         }
       );
     } catch (error) {
-      ErrorHandler.logError(error, { 
-        context: 'bkash_confirmation_notification',
-        transactionId,
-        userId 
-      });
+      // Non-blocking error
+      console.error('Confirmation Notification Error', error);
     }
   }
 
@@ -617,28 +600,30 @@ class PaymentProcessingService {
    */
   static async generateAndSendBkashReceipt(transactionId, userId) {
     try {
-      const receipt = this.generateBkashPaymentReceipt(transactionId);
+      const receipt = await this.generateBkashPaymentReceipt(transactionId);
       await NotificationService.sendBkashReceiptNotification(userId, receipt);
     } catch (error) {
-      ErrorHandler.logError(error, { 
-        context: 'bkash_receipt_generation',
-        transactionId,
-        userId 
-      });
+      // Non-blocking error
+      console.error('Receipt Generation Error', error);
     }
   }
 
   /**
    * Generate bKash-style payment receipt
    */
-  static generateBkashPaymentReceipt(transactionId) {
-    const transaction = Transaction.findById(transactionId);
+  static async generateBkashPaymentReceipt(transactionId) {
+    const transaction = await Transaction.findById(transactionId);
     if (!transaction) {
       throw new Error('Transaction not found');
     }
 
-    const booking = Booking.findById(transaction.bookingId);
-    const paymentData = JSON.parse(transaction.paymentData || '{}');
+    const booking = await Booking.findById(transaction.bookingId);
+    let paymentData = {};
+    try {
+        paymentData = JSON.parse(transaction.paymentData || '{}');
+    } catch(e) {
+        paymentData = transaction.paymentData || {};
+    }
     
     return {
       receiptId: `BKASH_RCPT_${transaction.transactionId}`,
@@ -646,7 +631,7 @@ class PaymentProcessingService {
       bkashTransactionId: paymentData.bkashTransactionId,
       bookingId: transaction.bookingId,
       patientName: booking?.patientName,
-      hospitalName: transaction.hospitalName,
+      hospitalName: transaction.hospitalName, 
       resourceType: booking?.resourceType,
       scheduledDate: booking?.scheduledDate,
       amount: formatTaka(transaction.amount),
@@ -667,13 +652,13 @@ class PaymentProcessingService {
   /**
    * Create transaction record
    */
-  static createTransaction(bookingId, amount, paymentMethod, userId) {
-    const booking = Booking.findById(bookingId);
+  static async createTransaction(bookingId, amount, paymentMethod, userId) {
+    const booking = await Booking.findById(bookingId);
     if (!booking) {
       throw new Error('Booking not found');
     }
 
-    const serviceCharge = PaymentConfig.calculateServiceCharge(amount, booking.hospitalId);
+    const serviceCharge = await PaymentConfig.calculateServiceCharge(amount, booking.hospitalId);
     const hospitalAmount = amount - serviceCharge;
 
     return Transaction.create({
@@ -684,7 +669,7 @@ class PaymentProcessingService {
       serviceCharge,
       hospitalAmount,
       paymentMethod,
-      transactionId: this.generateTransactionId(),
+      transactionId: securityUtils.generateSecureTransactionRef(),
       status: 'pending'
     });
   }
@@ -692,7 +677,7 @@ class PaymentProcessingService {
   /**
    * Confirm payment and update transaction status
    */
-  static confirmPayment(transactionId) {
+  static async confirmPayment(transactionId) {
     const processedAt = new Date().toISOString();
     return Transaction.updateStatus(transactionId, 'completed', processedAt);
   }
@@ -700,11 +685,12 @@ class PaymentProcessingService {
   /**
    * Handle payment failure
    */
-  static handlePaymentFailure(transactionId, errorReason) {
-    const transaction = Transaction.findById(transactionId);
+  static async handlePaymentFailure(transactionId, errorReason) {
+    const transaction = await Transaction.findById(transactionId);
     if (transaction) {
       // Update transaction status to failed
-      Transaction.updateStatus(transactionId, 'failed');
+      transaction.status = 'failed';
+      await transaction.save();
       
       // Log the failure reason
       console.error(`Payment failed for transaction ${transaction.transactionId}: ${errorReason}`);
@@ -716,20 +702,20 @@ class PaymentProcessingService {
   /**
    * Generate payment receipt
    */
-  static generatePaymentReceipt(transactionId) {
-    const transaction = Transaction.findById(transactionId);
+  static async generatePaymentReceipt(transactionId) {
+    const transaction = await Transaction.findById(transactionId);
     if (!transaction) {
       throw new Error('Transaction not found');
     }
 
-    const booking = Booking.findById(transaction.bookingId);
+    const booking = await Booking.findById(transaction.bookingId);
     
     return {
       receiptId: `RCPT_${transaction.transactionId}`,
       transactionId: transaction.transactionId,
       bookingId: transaction.bookingId,
       patientName: booking?.patientName,
-      hospitalName: transaction.hospitalName,
+      hospitalName: 'Hospital', // Placeholder, need fetch
       resourceType: booking?.resourceType,
       scheduledDate: booking?.scheduledDate,
       amount: transaction.amount,
@@ -747,7 +733,7 @@ class PaymentProcessingService {
    */
   static async processRefund(transactionId, refundAmount, reason) {
     try {
-      const transaction = Transaction.findById(transactionId);
+      const transaction = await Transaction.findById(transactionId);
       if (!transaction) {
         throw new Error('Transaction not found');
       }
@@ -766,12 +752,14 @@ class PaymentProcessingService {
 
       if (refundResult.success) {
         // Update transaction status
-        Transaction.updateStatus(transaction.id, 'refunded');
+        transaction.status = 'refunded';
+        await transaction.save();
 
         // Update booking status
-        const booking = Booking.findById(transaction.bookingId);
+        const booking = await Booking.findById(transaction.bookingId);
         if (booking) {
-          Booking.updateStatus(booking.id, 'cancelled');
+          booking.status = 'cancelled';
+          await booking.save();
         }
 
         return {
@@ -792,165 +780,24 @@ class PaymentProcessingService {
   }
 
   /**
+   * Dummy refund processing simulation
+   */
+  static async processDummyRefund(transaction, amount) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Always succeed for dummy
+    return {
+        success: true,
+        refundId: `REF_${Date.now()}`
+    };
+  }
+
+  /**
    * Dummy payment gateway simulation
    */
   static async processDummyPayment(paymentData, amount) {
     // Simulate processing delay
     await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Simulate different payment outcomes based on card number or amount
-    const simulateFailure = this.shouldSimulateFailure(paymentData, amount);
-
-    if (simulateFailure.shouldFail) {
-      return {
-        success: false,
-        error: simulateFailure.reason,
-        gatewayResponse: {
-          code: simulateFailure.code,
-          message: simulateFailure.reason
-        }
-      };
-    }
-
-    // Simulate successful payment
-    return {
-      success: true,
-      gatewayTransactionId: `GATEWAY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      gatewayResponse: {
-        code: '00',
-        message: 'Transaction approved',
-        authCode: Math.random().toString(36).substr(2, 6).toUpperCase()
-      },
-      processedAt: new Date().toISOString()
-    };
-  }
-
-  /**
-   * Dummy refund processing simulation
-   */
-  static async processDummyRefund(transaction, refundAmount) {
-    // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    // Simulate refund success (95% success rate)
-    const shouldFail = Math.random() < 0.05;
-
-    if (shouldFail) {
-      return {
-        success: false,
-        error: 'Refund processing failed - please try again later'
-      };
-    }
-
-    return {
-      success: true,
-      refundId: `REFUND_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      originalTransactionId: transaction.transactionId,
-      refundAmount,
-      processedAt: new Date().toISOString()
-    };
-  }
-
-  /**
-   * Determine if payment should be simulated as failed (for testing)
-   */
-  static shouldSimulateFailure(paymentData, amount) {
-    // Simulate failures based on test card numbers
-    if (paymentData.cardNumber) {
-      const testFailureCards = {
-        '4000000000000002': { code: '05', reason: 'Card declined' },
-        '4000000000000119': { code: '14', reason: 'Invalid card number' },
-        '4000000000000127': { code: '54', reason: 'Expired card' },
-        '4000000000000069': { code: '51', reason: 'Insufficient funds' }
-      };
-
-      if (testFailureCards[paymentData.cardNumber]) {
-        return {
-          shouldFail: true,
-          ...testFailureCards[paymentData.cardNumber]
-        };
-      }
-    }
-
-    // Simulate random failures (5% failure rate)
-    if (Math.random() < 0.05) {
-      const randomFailures = [
-        { code: '05', reason: 'Card declined' },
-        { code: '51', reason: 'Insufficient funds' },
-        { code: '91', reason: 'Issuer unavailable' }
-      ];
-      
-      return {
-        shouldFail: true,
-        ...randomFailures[Math.floor(Math.random() * randomFailures.length)]
-      };
-    }
-
-    return { shouldFail: false };
-  }
-
-  /**
-   * Generate unique transaction ID
-   */
-  static generateTransactionId() {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substr(2, 9);
-    return `TXN_${timestamp}_${random}`.toUpperCase();
-  }
-
-  /**
-   * Get payment history for user
-   */
-  /**
-   * Get payment history for user
-   */
-  static async getPaymentHistory(userId, limit = 50) {
-    const transactions = await Transaction.findByUserId(userId).limit(limit);
-    
-    // Format if needed
-    return transactions.map(t => {
-      const trans = t.toObject ? t.toObject() : t;
-      return {
-        ...trans,
-        paymentData: trans.paymentData || {}
-      };
-    });
-  }
-
-  /**
-   * Get transaction by ID with receipt data
-   */
-  static getTransactionWithReceipt(transactionId) {
-    const transaction = Transaction.findByTransactionId(transactionId);
-    if (!transaction) {
-      return null;
-    }
-
-    return {
-      transaction,
-      receipt: this.generatePaymentReceipt(transaction.id)
-    };
-  }
-
-  /**
-   * Retry failed payment
-   */
-  static async retryPayment(transactionId, newPaymentData) {
-    const transaction = Transaction.findById(transactionId);
-    if (!transaction) {
-      throw new Error('Transaction not found');
-    }
-
-    if (transaction.status !== 'failed') {
-      throw new Error('Can only retry failed transactions');
-    }
-
-    // Process new payment attempt
-    return this.processBookingPayment(
-      transaction.bookingId,
-      newPaymentData,
-      transaction.userId
-    );
+    return { success: true };
   }
 }
 

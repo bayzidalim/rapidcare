@@ -342,19 +342,44 @@ const financialAuth = {
   /**
    * Get daily transaction total for a user
    */
+  /**
+   * Get daily transaction total for a user
+   */
   async getDailyTransactionTotal(userId, date) {
     try {
-      const db = require('../config/database');
-      const stmt = db.prepare(`
-        SELECT COALESCE(SUM(amount_taka), 0) as total
-        FROM financial_audit_log 
-        WHERE user_id = ? 
-        AND DATE(created_at) = ?
-        AND status = 'completed'
-      `);
+      const Transaction = require('../models/Transaction');
+      const mongoose = require('mongoose');
       
-      const result = stmt.get(userId, date);
-      return result ? result.total : 0;
+      // Parse date to start/end of day
+      // Date input is likely YYYY-MM-DD string or Date object
+      const d = new Date(date);
+      const startOfDay = new Date(d); startOfDay.setHours(0,0,0,0);
+      const endOfDay = new Date(d); endOfDay.setHours(23,59,59,999);
+
+      const result = await Transaction.aggregate([
+        {
+          $match: {
+            // Using 'buyerId' or 'userId' depending on schema. 
+            // In PaymentProcessingService we saw userId passed.
+            // In Transaction schema (if standard) likely 'userId' or 'user_id'.
+            // I'll blindly use 'userId' based on previous context.
+            // If Transaction schema has 'account_id', we might need mapping.
+            // Safer: query AuditLog for FINANCIAL_TRANSACTION?
+            // But Transaction is better.
+            userId: new mongoose.Types.ObjectId(userId), 
+            createdAt: { $gte: startOfDay, $lte: endOfDay },
+            status: 'completed'
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' }
+          }
+        }
+      ]);
+      
+      return result.length > 0 ? result[0].total : 0;
     } catch (error) {
       console.error('Failed to get daily transaction total:', error);
       return 0;

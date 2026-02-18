@@ -3,8 +3,8 @@ const FinancialReconciliationService = require('../services/financialReconciliat
 const ErrorHandler = require('../utils/errorHandler');
 
 class ReconciliationScheduler {
-  constructor(database) {
-    this.reconciliationService = new FinancialReconciliationService(database);
+  constructor() {
+    this.reconciliationService = new FinancialReconciliationService();
     this.jobs = new Map();
   }
 
@@ -170,12 +170,11 @@ class ReconciliationScheduler {
     const cutoffTime = new Date();
     cutoffTime.setMinutes(cutoffTime.getMinutes() - minutes);
     
-    const query = `
-      SELECT * FROM transactions 
-      WHERE createdAt >= ? 
-      ORDER BY createdAt DESC
-    `;
-    return this.reconciliationService.db.prepare(query).all(cutoffTime.toISOString());
+    const Transaction = require('../models/Transaction');
+    
+    return Transaction.find({
+        createdAt: { $gte: cutoffTime }
+    }).sort({ createdAt: -1 });
   }
 
   /**

@@ -332,10 +332,8 @@ router.get('/health', authenticate, async (req, res) => {
     const currentTime = new Date().toISOString();
     
     // Basic health check - verify database connectivity
-    const db = require('../config/database');
-    const healthCheck = db.prepare('SELECT 1 as healthy').get();
-    
-    if (!healthCheck || healthCheck.healthy !== 1) {
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
       throw new Error('Database connectivity issue');
     }
 

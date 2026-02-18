@@ -1,7 +1,7 @@
 const UserService = require('../services/userService');
 
 // Authentication middleware
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     
@@ -17,7 +17,7 @@ const authenticate = (req, res, next) => {
     
     // Get user from database (handle both userId and id for compatibility)
     const userId = decoded.userId || decoded.id;
-    const user = UserService.getById(userId);
+    const user = await UserService.getById(userId);
     
     if (!user) {
       return res.status(401).json({
@@ -145,7 +145,7 @@ const authorizeHospitalAccess = (req, res, next) => {
 };
 
 // Optional authentication middleware (for public endpoints)
-const optionalAuth = (req, res, next) => {
+const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     
@@ -158,7 +158,7 @@ const optionalAuth = (req, res, next) => {
     
     // Get user from database (handle both userId and id for compatibility)
     const userId = decoded.userId || decoded.id;
-    const user = UserService.getById(userId);
+    const user = await UserService.getById(userId);
     if (user) {
       req.user = user;
     }

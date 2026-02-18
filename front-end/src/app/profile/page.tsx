@@ -151,11 +151,17 @@ export default function ProfilePage() {
       // Handle profile data
       if (profileResponse.status === 'fulfilled' && profileResponse.value.data.success) {
         const profileData = profileResponse.value.data.data;
-        setProfile(profileData);
-        profileForm.reset({
-          name: profileData.name,
-          phone: profileData.phone || '',
-        });
+        if (profileData) {
+          setProfile(profileData);
+          profileForm.reset({
+            name: profileData.name || '',
+            phone: profileData.phone || '',
+          });
+        } else {
+             // If success is true but data is null (shouldn't happen with backend fix, but safe to handle)
+             console.error('Profile data is missing');
+             setError('Profile not found');
+        }
       } else {
         console.error('Profile fetch failed:', profileResponse);
         setError('Failed to load profile information');

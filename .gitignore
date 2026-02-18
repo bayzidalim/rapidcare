@@ -23,9 +23,11 @@ dist/
 database.sqlite
 
 # Credential files (NEVER commit these!)
+CREDENTIALS.md
 HOSPITAL_CREDENTIALS.md
 hospital_credentials.json
 back-end/hospital_credentials.json
+back-end/CREDENTIALS.md
 
 # IDE and editor files
 .vscode/

@@ -205,7 +205,7 @@ export interface Booking {
   rapidAssistantPhone?: string;
   createdAt: string;
   updatedAt: string;
-  
+
   // Booking approval fields
   approvedBy?: number;
   approvedAt?: string;
@@ -213,7 +213,7 @@ export interface Booking {
   authorityNotes?: string;
   resourcesAllocated?: number;
   expiresAt?: string;
-  
+
   // Enhanced fields for approval interface
   userName?: string;
   userPhone?: string;
@@ -234,7 +234,7 @@ export interface Booking {
 
 // Blood Request Types
 export interface BloodRequest {
-  id: number;
+  id: number | string;
   requesterId: number;
   requesterName: string;
   requesterPhone: string;
@@ -672,7 +672,7 @@ export interface BookingApprovalFilters {
   limit?: number;
   sortBy?: 'urgency' | 'date' | 'patient' | 'amount';
   sortOrder?: 'asc' | 'desc';
-} 
+}
 
 // Analytics Types
 export interface ResourceUtilizationMetrics {

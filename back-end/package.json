@@ -13,11 +13,10 @@
     "assign:credentials": "node utils/assignHospitalCredentials.js",
     "view:credentials": "node utils/viewHospitalCredentials.js",
     "update:pricing-5x": "node update-pricing-5x.js",
-    "migrate": "node migrations/migrate.js",
-    "migrate:status": "node migrations/migrate.js status",
-    "test": "mocha tests/**/*.test.js --timeout 10000",
-    "test:watch": "mocha tests/**/*.test.js --watch --timeout 10000",
-    "test:rapid-assistance": "mocha tests/services/rapidAssistance.test.js --timeout 10000",
+    "test": "NODE_ENV=test mocha 'tests/**/*.test.js' --timeout 30000 --exit",
+    "test:models": "NODE_ENV=test mocha 'tests/models/**/*.test.js' --timeout 30000 --exit",
+    "test:auth": "NODE_ENV=test mocha 'tests/auth/**/*.test.js' --timeout 30000 --exit",
+    "test:watch": "NODE_ENV=test mocha 'tests/**/*.test.js' --watch --timeout 30000",
     "lint": "eslint ."
   },
   "keywords": [
@@ -26,7 +25,7 @@
     "healthcare-api",
     "medical-booking",
     "express",
-    "sqlite",
+    "mongo",
     "jwt-auth"
   ],
   "author": "RapidCare Team",
@@ -50,6 +49,7 @@
     "chai": "^4.3.10",
     "eslint": "^9.36.0",
     "mocha": "^10.2.0",
+    "mongodb-memory-server": "^11.0.1",
     "nodemon": "^3.1.10",
     "sinon": "^17.0.1",
     "supertest": "^6.3.3"

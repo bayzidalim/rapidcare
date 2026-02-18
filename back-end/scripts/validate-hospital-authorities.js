@@ -1,16 +1,17 @@
-#!/usr/bin/env node
-
 const HospitalAuthorityValidationService = require('../services/hospitalAuthorityValidationService');
-const db = require('../config/database');
+const connectDB = require('../config/database');
 
 async function main() {
   console.log('🏥 Hospital Authority Validation Script');
   console.log('=====================================\n');
   
   try {
+    // Connect to DB
+    await connectDB();
+
     // Get current validation status
     console.log('📊 Current Status:');
-    const status = HospitalAuthorityValidationService.getValidationStatus();
+    const status = await HospitalAuthorityValidationService.getValidationStatus();
     
     if (status.length === 0) {
       console.log('No hospital authority users found.');
@@ -22,8 +23,9 @@ async function main() {
       const statusIcon = user.status === 'OK' ? '✅' : '❌';
       console.log(`${statusIcon} ${user.email}: ${user.status}`);
       if (user.status !== 'OK') {
-        console.log(`   User Hospital ID: ${user.userHospitalId}`);
-        console.log(`   Authority Hospital ID: ${user.authorityHospitalId}`);
+        // Updated keys from Mongoose service
+        console.log(`   Hospital ID: ${user.hospitalId}`);
+        console.log(`   Role: ${user.role}`);
       }
     });
     
@@ -40,7 +42,7 @@ async function main() {
     console.log('\n🔧 Issues found. Running automatic fixes...');
     
     // Run validation and fixes
-    const results = HospitalAuthorityValidationService.validateAndFixAll();
+    const results = await HospitalAuthorityValidationService.validateAndFixAll();
     
     console.log('\n📋 Fix Results:');
     console.log(`Total users: ${results.total}`);
@@ -64,7 +66,7 @@ async function main() {
     
     // Final validation
     console.log('\n🔍 Final Validation:');
-    const finalStatus = HospitalAuthorityValidationService.getValidationStatus();
+    const finalStatus = await HospitalAuthorityValidationService.getValidationStatus();
     const finalIssues = finalStatus.filter(user => user.status !== 'OK');
     
     if (finalIssues.length === 0) {

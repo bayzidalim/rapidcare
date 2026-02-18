@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const userBalanceSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  userType: { type: String, required: true }, // copied from User for redundancy / querying
+  userType: { type: String, required: true }, 
   hospitalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Hospital' },
   currentBalance: { type: Number, default: 0.00 },
   totalEarnings: { type: Number, default: 0.00 },
@@ -13,68 +13,82 @@ const userBalanceSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for getting specific balance
 userBalanceSchema.index({ userId: 1, hospitalId: 1 }, { unique: true });
+
+userBalanceSchema.statics.findByUserId = function(userId, hospitalId = null) {
+  let query = { userId };
+  if (hospitalId) query.hospitalId = hospitalId;
+  return this.findOne(query);
+};
 
 userBalanceSchema.statics.getOrCreateBalance = async function(userId, userType, hospitalId = null) {
   let query = { userId };
   if (hospitalId) query.hospitalId = hospitalId;
   else query.hospitalId = null;
 
-  let balance = await this.findOne(query)
-    .populate('userId', 'name email')
-    .populate('hospitalId', 'name');
+  let balance = await this.findOne(query);
 
   if (!balance) {
     balance = await this.create({
       userId,
-      userType, // This might be stale if user changes type, but okay for record
+      userType,
       hospitalId,
       currentBalance: 0,
       totalEarnings: 0,
       totalWithdrawals: 0,
       pendingAmount: 0
     });
-    // Populate after create not strictly needed for logic but good for return
-    balance = await balance.populate('userId', 'name email');
-    if (balance.hospitalId) await balance.populate('hospitalId', 'name');
   }
   return balance;
 };
 
 userBalanceSchema.statics.updateBalance = async function(userId, hospitalId, amount, transactionType, transactionId = null, description = null) {
-  const balance = await this.getOrCreateBalance(userId, 'unknown', hospitalId); // userType handling?
-  // We can fetch userType from User if needed, but getOrCreate handles existence.
+  // If userType is unknown, we might need to fetch user or let getOrCreate handle it if we passed generic 'user'
+  // But usually this calls on existing balance.
+  // We use findOne primarily.
+  let balance = await this.findOne({ userId, hospitalId });
+  if (!balance) {
+      // Lazy create
+      balance = await this.create({
+          userId,
+          userType: 'unknown', // Placeholder
+          hospitalId,
+          currentBalance: 0
+      });
+  }
   
   const balanceBefore = balance.currentBalance;
-  let balanceAfter = balanceBefore;
   let amountFloat = parseFloat(amount);
-
+  
+  // Update current balance
+  balance.currentBalance += amountFloat;
+  
+  // KPI updates
   switch (transactionType) {
       case 'payment_received':
       case 'service_charge':
-        balanceAfter = balanceBefore + amountFloat;
         balance.totalEarnings += amountFloat;
         break;
       case 'refund_processed':
+          // Reduces total earnings
+        balance.totalEarnings += amountFloat; 
+        break;
       case 'withdrawal':
-        balanceAfter = balanceBefore - amountFloat;
-        balance.totalWithdrawals += amountFloat;
+          // Increases total withdrawals (absolute value)
+        balance.totalWithdrawals += Math.abs(amountFloat);
         break;
       case 'adjustment':
-        balanceAfter = balanceBefore + amountFloat;
-        if (amountFloat > 0) balance.totalEarnings += amountFloat;
-        else balance.totalWithdrawals += Math.abs(amountFloat);
+        // Logic depends on adjustment.
+        // If positive, earnings? If negative, undefined? 
+        // For now leave KPI untouched or handle specifically.
         break;
-      default:
-        throw new Error(`Invalid transaction type: ${transactionType}`);
   }
 
-  balance.currentBalance = balanceAfter;
   balance.lastTransactionAt = new Date();
   await balance.save();
 
   // Log BalanceTransaction
+  // Need to require model dynamically to avoid circular dependency if it imports UserBalance
   const BalanceTransaction = mongoose.model('BalanceTransaction');
   await BalanceTransaction.create({
       balanceId: balance._id,
@@ -82,15 +96,47 @@ userBalanceSchema.statics.updateBalance = async function(userId, hospitalId, amo
       transactionType,
       amount: amountFloat,
       balanceBefore,
-      balanceAfter,
+      balanceAfter: balance.currentBalance,
       description,
-      processedBy: userId
+      processedBy: userId // Or system
   });
 
   return balance;
 };
 
-// ... other getters converted to Mongoose find queries
+userBalanceSchema.statics.getBalanceSummary = async function(userType, hospitalId = null) {
+  const match = {};
+  if (userType) match.userType = userType;
+  if (hospitalId) match.hospitalId = new mongoose.Types.ObjectId(hospitalId);
+
+  const summary = await this.aggregate([
+    { $match: match },
+    { $group: {
+      _id: null,
+      totalBalance: { $sum: '$currentBalance' },
+      totalEarnings: { $sum: '$totalEarnings' },
+      totalWithdrawals: { $sum: '$totalWithdrawals' },
+      avgBalance: { $avg: '$currentBalance' },
+      count: { $sum: 1 }
+    }}
+  ]);
+
+  return summary[0] || {
+    totalBalance: 0,
+    totalEarnings: 0,
+    totalWithdrawals: 0,
+    avgBalance: 0,
+    count: 0
+  };
+};
+
+userBalanceSchema.statics.getLowBalanceAccounts = async function(threshold) {
+    return this.find({ currentBalance: { $lt: threshold } }).populate('hospitalId', 'name');
+};
+
+userBalanceSchema.statics.getAdminBalances = async function() {
+    return this.find({ userType: 'admin' });
+};
 
 const UserBalance = mongoose.model('UserBalance', userBalanceSchema);
 

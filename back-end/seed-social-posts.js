@@ -1,14 +1,26 @@
-const db = require('./config/database');
+const mongoose = require('mongoose');
+const SocialPost = require('./models/SocialPost');
+const User = require('./models/User');
+const Hospital = require('./models/Hospital');
+const connectDB = require('./config/database');
 
-// Get valid user and hospital IDs from database
-function getSamplePosts() {
-  // Get a valid user ID
-  const user = db.prepare('SELECT id FROM users WHERE userType = ? LIMIT 1').get('user');
-  const userId = user ? user.id : 824; // Fallback to known user ID
+async function getSamplePosts() {
+  // Get a valid user ID (any user)
+  const user = await User.findOne({ userType: { $ne: 'admin' } });
+  if (!user) {
+    console.log('No suitable user found for creating posts');
+    return [];
+  }
+  const userId = user._id;
 
   // Get valid hospital IDs
-  const hospitals = db.prepare('SELECT id FROM hospitals WHERE approval_status = ? LIMIT 3').all('approved');
-  const hospitalIds = hospitals.length > 0 ? hospitals.map(h => h.id) : [760, 761, 762];
+  const hospitals = await Hospital.find({ approval_status: 'approved' }).limit(3);
+  if (hospitals.length === 0) {
+      console.log('No approved hospitals found');
+      return [];
+  }
+
+  const hospitalIds = hospitals.map(h => h._id);
 
   return [
     {
@@ -74,146 +86,91 @@ async function seedSocialPosts() {
   console.log('🌱 Seeding social posts...');
 
   try {
+    await connectDB();
+
     // Check if posts already exist
-    const existingPosts = db.prepare('SELECT COUNT(*) as count FROM social_posts').get();
+    const count = await SocialPost.countDocuments();
     
-    if (existingPosts.count > 0) {
-      console.log(`⚠️  Database already has ${existingPosts.count} social posts. Skipping seed.`);
+    if (count > 0) {
+      console.log(`⚠️  Database already has ${count} social posts. Skipping seed.`);
       console.log('   To reseed, delete existing posts first.');
       return;
     }
 
-    // Get sample posts with valid IDs
-    const samplePosts = getSamplePosts();
+    // Get sample posts
+    const samplePosts = await getSamplePosts();
+    if (samplePosts.length === 0) return;
 
     // Insert sample posts
-    const insertStmt = db.prepare(`
-      INSERT INTO social_posts (userId, hospitalId, postType, title, content)
-      VALUES (?, ?, ?, ?, ?)
-    `);
+    const createdPosts = await SocialPost.insertMany(samplePosts);
+    // createdPosts will work, but for ensuring logic I usually use create. insertMany skips validation unless specified.
+    
+    console.log(`✅ Successfully seeded ${createdPosts.length} social posts`);
 
-    let insertedCount = 0;
-    for (const post of samplePosts) {
-      try {
-        insertStmt.run(
-          post.userId,
-          post.hospitalId,
-          post.postType,
-          post.title,
-          post.content
-        );
-        insertedCount++;
-      } catch (error) {
-        console.error(`Error inserting post "${post.title}":`, error.message);
-      }
+    // Get a user for interaction
+    const user = await User.findOne({ userType: { $ne: 'admin' } });
+    const admin = await User.findOne({ userType: 'admin' });
+    
+    if (createdPosts.length > 0 && user) {
+        const posts = createdPosts;
+
+        // Add likes
+        for (const post of posts) {
+            const likeCount = Math.floor(Math.random() * 6);
+            for (let i = 0; i < likeCount; i++) {
+                // We use the same user for simplicity, but in real seed we might want different users.
+                // Since we only fetched one user, one user can only like once.
+                // So max likes per post = 1 if only 1 user.
+                // Let's find more users if possible.
+                const users = await User.find({ userType: { $ne: 'admin' } }).limit(5);
+                if (users.length > 0) {
+                     const randomUser = users[Math.floor(Math.random() * users.length)];
+                     await SocialPost.likePost(post._id, randomUser._id);
+                }
+            }
+        }
+
+        // Add comments
+        const sampleComments = [
+            'Thank you for sharing your experience!',
+            'I had a similar experience at this hospital.',
+            'This is very helpful information.',
+            'I hope the hospital addresses this issue.',
+            'Great to hear positive feedback!',
+        ];
+
+        for (const post of posts) {
+            const commentCount = Math.floor(Math.random() * 4);
+            const users = await User.find({ userType: { $ne: 'admin' } }).limit(5);
+            
+            for (let i = 0; i < commentCount; i++) {
+                if (users.length > 0) {
+                    const randomUser = users[Math.floor(Math.random() * users.length)];
+                    const randomComment = sampleComments[Math.floor(Math.random() * sampleComments.length)];
+                    await SocialPost.addComment(post._id, randomUser._id, randomComment);
+                }
+            }
+        }
+
+        // Add views
+        for (const post of posts) {
+             const viewCount = Math.floor(Math.random() * 100) + 10;
+             // Update directly as incrementViews increments by 1
+             await SocialPost.findByIdAndUpdate(post._id, { viewsCount: viewCount });
+        }
+
+        // Verify some posts
+        if (admin) {
+            for (const post of posts) {
+                if (Math.random() > 0.5) {
+                    await SocialPost.verifyPost(post._id, admin._id);
+                }
+            }
+        }
     }
 
-    // Add some likes and comments to make it more realistic
-    const posts = db.prepare('SELECT id FROM social_posts').all();
-    
-    if (posts.length > 0) {
-      // Add likes
-      const likeStmt = db.prepare(`
-        INSERT INTO social_post_likes (postId, userId)
-        VALUES (?, ?)
-      `);
-
-      posts.forEach(post => {
-        // Random number of likes (0-5)
-        const likeCount = Math.floor(Math.random() * 6);
-        for (let i = 0; i < likeCount; i++) {
-          try {
-            likeStmt.run(post.id, 1); // Using userId 1 for simplicity
-          } catch (error) {
-            // Ignore duplicate likes
-          }
-        }
-      });
-
-      // Update like counts
-      const updateLikesStmt = db.prepare(`
-        UPDATE social_posts 
-        SET likesCount = (
-          SELECT COUNT(*) FROM social_post_likes WHERE postId = social_posts.id
-        )
-      `);
-      updateLikesStmt.run();
-
-      // Add some comments
-      const commentStmt = db.prepare(`
-        INSERT INTO social_post_comments (postId, userId, content)
-        VALUES (?, ?, ?)
-      `);
-
-      const sampleComments = [
-        'Thank you for sharing your experience!',
-        'I had a similar experience at this hospital.',
-        'This is very helpful information.',
-        'I hope the hospital addresses this issue.',
-        'Great to hear positive feedback!',
-      ];
-
-      posts.forEach(post => {
-        // Random number of comments (0-3)
-        const commentCount = Math.floor(Math.random() * 4);
-        for (let i = 0; i < commentCount; i++) {
-          const randomComment = sampleComments[Math.floor(Math.random() * sampleComments.length)];
-          try {
-            commentStmt.run(post.id, 1, randomComment);
-          } catch (error) {
-            console.error('Error adding comment:', error.message);
-          }
-        }
-      });
-
-      // Update comment counts
-      const updateCommentsStmt = db.prepare(`
-        UPDATE social_posts 
-        SET commentsCount = (
-          SELECT COUNT(*) FROM social_post_comments WHERE postId = social_posts.id AND isActive = 1
-        )
-      `);
-      updateCommentsStmt.run();
-
-      // Add some views
-      const updateViewsStmt = db.prepare(`
-        UPDATE social_posts 
-        SET viewsCount = ?
-        WHERE id = ?
-      `);
-
-      posts.forEach(post => {
-        const viewCount = Math.floor(Math.random() * 100) + 10; // 10-110 views
-        updateViewsStmt.run(viewCount, post.id);
-      });
-
-      // Verify some posts (50% chance)
-      const verifyStmt = db.prepare(`
-        UPDATE social_posts 
-        SET isAdminVerified = 1, verifiedBy = 1, verifiedAt = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `);
-
-      posts.forEach(post => {
-        if (Math.random() > 0.5) {
-          verifyStmt.run(post.id);
-        }
-      });
-    }
-
-    console.log(`✅ Successfully seeded ${insertedCount} social posts`);
-    console.log('   Posts include likes, comments, views, and some are admin-verified');
-    
     // Display summary
-    const stats = db.prepare(`
-      SELECT 
-        COUNT(*) as totalPosts,
-        SUM(CASE WHEN isAdminVerified = 1 THEN 1 ELSE 0 END) as verifiedPosts,
-        SUM(likesCount) as totalLikes,
-        SUM(commentsCount) as totalComments,
-        SUM(viewsCount) as totalViews
-      FROM social_posts
-    `).get();
+    const stats = await SocialPost.getStats();
 
     console.log('\n📊 Social Posts Summary:');
     console.log(`   Total Posts: ${stats.totalPosts}`);
@@ -224,7 +181,7 @@ async function seedSocialPosts() {
 
   } catch (error) {
     console.error('❌ Error seeding social posts:', error);
-    throw error;
+    process.exit(1);
   }
 }
 

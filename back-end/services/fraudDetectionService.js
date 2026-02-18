@@ -1,5 +1,6 @@
-const db = require('../config/database');
+const AuditLog = require('../models/AuditLog');
 const auditService = require('./auditService');
+const mongoose = require('mongoose');
 
 class FraudDetectionService {
   constructor() {
@@ -50,7 +51,7 @@ class FraudDetectionService {
       const analysisDetails = [];
 
       // Run all fraud detection rules
-      const amountRisk = this.checkAmountRisk(amountTaka, userId);
+      const amountRisk = await this.checkAmountRisk(amountTaka, userId);
       riskScore += amountRisk.score;
       if (amountRisk.flags.length > 0) {
         fraudFlags.push(...amountRisk.flags);
@@ -98,7 +99,7 @@ class FraudDetectionService {
         timestamp: new Date().toISOString()
       };
 
-      // Log the fraud analysis
+      // Log the fraud analysis (AuditService handles Mongoose save)
       await auditService.logSecurityEvent({
         eventType: 'FRAUD_ANALYSIS',
         userId,
@@ -124,7 +125,7 @@ class FraudDetectionService {
   /**
    * Check amount-based fraud risks
    */
-  checkAmountRisk(amountTaka, userId) {
+  async checkAmountRisk(amountTaka, userId) {
     let score = 0;
     const flags = [];
     const details = [];
@@ -136,8 +137,8 @@ class FraudDetectionService {
       details.push(`Large transaction amount: ${amountTaka} BDT`);
     }
 
-    // Unusual amount pattern (check if amount is significantly different from user's history)
-    const userAverage = this.getUserAverageAmount(userId);
+    // Unusual amount pattern
+    const userAverage = await this.getUserAverageAmount(userId);
     if (userAverage && amountTaka > userAverage * 5) {
       score += this.fraudRules.UNUSUAL_AMOUNT.weight;
       flags.push('UNUSUAL_AMOUNT');
@@ -160,16 +161,16 @@ class FraudDetectionService {
       const oneHourAgo = new Date(now.getTime() - this.fraudRules.HIGH_FREQUENCY.timeWindow * 1000);
       const fiveMinutesAgo = new Date(now.getTime() - this.fraudRules.RAPID_SUCCESSION.timeWindow * 1000);
 
-      // High frequency check (transactions in last hour)
-      const hourlyCount = this.getTransactionCount(userId, oneHourAgo, now);
+      // High frequency check
+      const hourlyCount = await this.getTransactionCount(userId, oneHourAgo, now);
       if (hourlyCount >= this.fraudRules.HIGH_FREQUENCY.threshold) {
         score += this.fraudRules.HIGH_FREQUENCY.weight;
         flags.push('HIGH_FREQUENCY');
         details.push(`High transaction frequency: ${hourlyCount} transactions in last hour`);
       }
 
-      // Rapid succession check (transactions in last 5 minutes)
-      const rapidCount = this.getTransactionCount(userId, fiveMinutesAgo, now);
+      // Rapid succession check
+      const rapidCount = await this.getTransactionCount(userId, fiveMinutesAgo, now);
       if (rapidCount >= this.fraudRules.RAPID_SUCCESSION.threshold) {
         score += this.fraudRules.RAPID_SUCCESSION.weight;
         flags.push('RAPID_SUCCESSION');
@@ -195,7 +196,7 @@ class FraudDetectionService {
       const thirtyMinutesAgo = new Date(Date.now() - this.fraudRules.MULTIPLE_FAILED_ATTEMPTS.timeWindow * 1000);
 
       // Multiple failed attempts check
-      const failedCount = this.getFailedTransactionCount(userId, thirtyMinutesAgo);
+      const failedCount = await this.getFailedTransactionCount(userId, thirtyMinutesAgo);
       if (failedCount >= this.fraudRules.MULTIPLE_FAILED_ATTEMPTS.threshold) {
         score += this.fraudRules.MULTIPLE_FAILED_ATTEMPTS.weight;
         flags.push('MULTIPLE_FAILED_ATTEMPTS');
@@ -226,15 +227,15 @@ class FraudDetectionService {
 
     try {
       // New device check
-      const isNewDevice = !this.isKnownDevice(userId, userAgent);
+      const isNewDevice = !(await this.isKnownDevice(userId, userAgent));
       if (isNewDevice) {
         score += this.fraudRules.NEW_DEVICE.weight;
         flags.push('NEW_DEVICE');
         details.push('Transaction from new/unknown device');
       }
 
-      // Unusual location check (based on IP geolocation)
-      const isUnusualLocation = this.isUnusualLocation(userId, ipAddress);
+      // Unusual location check
+      const isUnusualLocation = await this.isUnusualLocation(userId, ipAddress);
       if (isUnusualLocation) {
         score += this.fraudRules.UNUSUAL_LOCATION.weight;
         flags.push('UNUSUAL_LOCATION');
@@ -271,17 +272,26 @@ class FraudDetectionService {
   /**
    * Get user's average transaction amount
    */
-  getUserAverageAmount(userId) {
+  async getUserAverageAmount(userId) {
     try {
-      const stmt = db.prepare(`
-        SELECT AVG(amount_taka) as average
-        FROM financial_audit_log 
-        WHERE user_id = ? AND status = 'completed'
-        AND created_at >= datetime('now', '-30 days')
-      `);
+      const result = await AuditLog.aggregate([
+        { 
+          $match: { 
+            entityType: 'financial',
+            userId: new mongoose.Types.ObjectId(userId),
+            'metadata.status': 'completed',
+            createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+          }
+        },
+        { 
+          $group: { 
+            _id: null, 
+            average: { $avg: '$metadata.amountTaka' } 
+          }
+        }
+      ]);
       
-      const result = stmt.get(userId);
-      return result ? result.average : null;
+      return result.length > 0 ? result[0].average : null;
     } catch (error) {
       console.error('Failed to get user average amount:', error);
       return null;
@@ -291,18 +301,13 @@ class FraudDetectionService {
   /**
    * Get transaction count for a user within a time window
    */
-  getTransactionCount(userId, startTime, endTime) {
+  async getTransactionCount(userId, startTime, endTime) {
     try {
-      const stmt = db.prepare(`
-        SELECT COUNT(*) as count
-        FROM financial_audit_log 
-        WHERE user_id = ? 
-        AND created_at >= ? 
-        AND created_at <= ?
-      `);
-      
-      const result = stmt.get(userId, startTime.toISOString(), endTime.toISOString());
-      return result ? result.count : 0;
+      return await AuditLog.countDocuments({
+        entityType: 'financial',
+        userId: userId,
+        createdAt: { $gte: startTime, $lte: endTime }
+      });
     } catch (error) {
       console.error('Failed to get transaction count:', error);
       return 0;
@@ -312,18 +317,14 @@ class FraudDetectionService {
   /**
    * Get failed transaction count for a user within a time window
    */
-  getFailedTransactionCount(userId, startTime) {
+  async getFailedTransactionCount(userId, startTime) {
     try {
-      const stmt = db.prepare(`
-        SELECT COUNT(*) as count
-        FROM financial_audit_log 
-        WHERE user_id = ? 
-        AND status = 'failed'
-        AND created_at >= ?
-      `);
-      
-      const result = stmt.get(userId, startTime.toISOString());
-      return result ? result.count : 0;
+      return await AuditLog.countDocuments({
+        entityType: 'financial',
+        userId: userId,
+        'metadata.status': 'failed',
+        createdAt: { $gte: startTime }
+      });
     } catch (error) {
       console.error('Failed to get failed transaction count:', error);
       return 0;
@@ -334,7 +335,6 @@ class FraudDetectionService {
    * Check if IP address is suspicious
    */
   isSuspiciousIP(ipAddress) {
-    // Simple checks for suspicious IPs
     const suspiciousPatterns = [
       /^10\./, // Private network
       /^192\.168\./, // Private network
@@ -350,42 +350,53 @@ class FraudDetectionService {
   /**
    * Check if device is known for the user
    */
-  isKnownDevice(userId, userAgent) {
+  async isKnownDevice(userId, userAgent) {
     try {
-      const stmt = db.prepare(`
-        SELECT COUNT(*) as count
-        FROM financial_audit_log 
-        WHERE user_id = ? 
-        AND user_agent = ?
-        AND created_at >= datetime('now', '-90 days')
-      `);
+      const count = await AuditLog.countDocuments({
+        entityType: 'financial',
+        userId: userId,
+        'metadata.userAgent': userAgent,
+        createdAt: { $gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }
+      });
       
-      const result = stmt.get(userId, userAgent);
-      return result && result.count > 0;
+      return count > 0;
     } catch (error) {
       console.error('Failed to check known device:', error);
-      return true; // Default to known to avoid false positives
+      return true; // Default to known to avoid false positive blocks
     }
   }
 
   /**
    * Check if location is unusual for the user
    */
-  isUnusualLocation(userId, ipAddress) {
-    // Simplified location check - in a real implementation,
-    // you would use IP geolocation services
+  async isUnusualLocation(userId, ipAddress) {
     try {
-      const stmt = db.prepare(`
-        SELECT COUNT(DISTINCT ip_address) as unique_ips
-        FROM financial_audit_log 
-        WHERE user_id = ?
-        AND created_at >= datetime('now', '-30 days')
-      `);
+      const result = await AuditLog.aggregate([
+        {
+          $match: {
+            entityType: 'financial',
+            userId: new mongoose.Types.ObjectId(userId),
+            createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            uniqueIps: { $addToSet: '$metadata.ipAddress' }
+          }
+        }
+      ]);
       
-      const result = stmt.get(userId);
+      // If user has used many different IPs recently (e.g. > 10), current one might be normal but if uniqueIPs count is low and this is new...
+      // The old SQL was `COUNT(DISTINCT ip_address) > 10`. Logic: if user roams a lot, "unusual location" check is less reliable or maybe MORE reliable if suddenly new IP?
+      // Actually the comment said: "If user has used many different IPs recently, this might be unusual".
+      // Wait, if user uses many IPs, it's HARDER to determine unusual location.
+      // But maybe the check meant: if user usually uses 1 IP, and suddenly uses another...
+      // The SQL was checking specifically for > 10 unique IPs.
+      // Let's stick to the SQL logic: if unique IPs > 10 in last 30 days, return true (unusual behavior).
       
-      // If user has used many different IPs recently, this might be unusual
-      return result && result.unique_ips > 10;
+      const uniqueCount = result.length > 0 ? result[0].uniqueIps.length : 0;
+      return uniqueCount > 10;
     } catch (error) {
       console.error('Failed to check unusual location:', error);
       return false;
@@ -477,22 +488,39 @@ class FraudDetectionService {
   /**
    * Get fraud statistics
    */
-  getFraudStatistics(timeRange = '30 days') {
+  async getFraudStatistics(timeRange = '30 days') {
+    // Parse timeRange e.g. "30 days"
+    const days = parseInt(timeRange) || 30;
+    
     try {
-      const stmt = db.prepare(`
-        SELECT 
-          COUNT(*) as total_transactions,
-          COUNT(CASE WHEN risk_score >= ? THEN 1 END) as high_risk_transactions,
-          COUNT(CASE WHEN risk_score >= ? THEN 1 END) as medium_risk_transactions,
-          AVG(risk_score) as average_risk_score,
-          MAX(risk_score) as max_risk_score
-        FROM financial_audit_log 
-        WHERE created_at >= datetime('now', '-${timeRange}')
-      `);
-
-      const stats = stmt.get(this.riskThresholds.HIGH, this.riskThresholds.MEDIUM);
-      
-      return { success: true, statistics: stats };
+       const stats = await AuditLog.aggregate([
+         { 
+           $match: { 
+             entityType: 'financial', // Assuming reports use financial logs or FRAUD_ANALYSIS events?
+             // Actually fraud score is logged in FRAUD_ANALYSIS events in security logs usually?
+             // Or financial logs have riskScore.
+             // PaymentProcessingService logs riskScore in Transaction (stored in DB) and logFinancialOperation (AuditLog).
+             // Let's use AuditLog with entityType='financial' and sort by riskScore in metadata.
+             createdAt: { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
+           }
+         },
+         {
+           $group: {
+             _id: null,
+             total_transactions: { $sum: 1 },
+             high_risk_transactions: { 
+               $sum: { $cond: [{ $gte: ["$metadata.riskScore", this.riskThresholds.HIGH] }, 1, 0] }
+             },
+             medium_risk_transactions: {
+               $sum: { $cond: [{ $gte: ["$metadata.riskScore", this.riskThresholds.MEDIUM] }, 1, 0] }
+             },
+             average_risk_score: { $avg: "$metadata.riskScore" },
+             max_risk_score: { $max: "$metadata.riskScore" }
+           }
+         }
+       ]);
+       
+       return { success: true, statistics: stats[0] || {} };
     } catch (error) {
       console.error('Failed to get fraud statistics:', error);
       return { success: false, error: error.message };
