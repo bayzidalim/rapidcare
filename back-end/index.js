@@ -107,8 +107,8 @@ const startServer = async () => {
 
     // Start server with graceful EADDRINUSE fallback
     const listen = (portToUse) => {
-      server = app.listen(portToUse, () => {
-        console.log(`🚀 RapidCare API server running on port ${portToUse}`);
+      server = app.listen(portToUse, '0.0.0.0', () => {
+        console.log(`🚀 RapidCare API server running on 0.0.0.0:${portToUse}`);
         console.log(`🏥 Emergency Care, Delivered Fast - Ready to serve critical medical needs`);
         console.log(`📊 Health check available at: http://localhost:${portToUse}/api/health`);
         console.log(`💰 Financial reconciliation scheduler started`);

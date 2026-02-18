@@ -378,6 +378,9 @@ class RevenueManagementService {
       { $sort: { totalHospitalRevenue: -1 } }
     ]);
 
+    return result;
+  }
+
 
   static async getRevenueMetrics(hospitalId, period) {
     const dateRange = this.getDateRangeForPeriod(period);
