@@ -10,8 +10,24 @@ const app = express();
 
 // Middleware
 // Configure CORS to allow requests from frontend
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+  : [];
+
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || '*',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (e.g. curl, server-to-server)
+    if (!origin) return callback(null, true);
+    // Check exact match from env
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow any Vercel preview deployment for the project
+    if (origin.match(/^https:\/\/rapidcare[a-z0-9-]*\.vercel\.app$/)) return callback(null, true);
+    // Allow localhost for development
+    if (origin.match(/^http:\/\/localhost:\d+$/)) return callback(null, true);
+    // Fallback: if no FRONTEND_URL set, allow all
+    if (allowedOrigins.length === 0) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   optionsSuccessStatus: 200
 };
